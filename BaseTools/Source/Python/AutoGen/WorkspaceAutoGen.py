@@ -143,8 +143,11 @@ class WorkspaceAutoGen(AutoGen):
         else:
             ArchList = set(self.ArchList) & set(self.Platform.SupArchList)
         if not ArchList:
-            EdkLogger.error("build", PARAMETER_INVALID,
-                            ExtraData = "Invalid ARCH specified. [Valid ARCH: %s]" % (" ".join(self.Platform.SupArchList)))
+            EdkLogger.error(
+                "build",
+                PARAMETER_INVALID,
+                ExtraData=f'Invalid ARCH specified. [Valid ARCH: {" ".join(self.Platform.SupArchList)}]',
+            )
         elif self.ArchList and len(ArchList) != len(self.ArchList):
             SkippedArchList = set(self.ArchList).symmetric_difference(set(self.Platform.SupArchList))
             EdkLogger.verbose("\nArch [%s] is ignored because the platform supports [%s] only!"
@@ -154,9 +157,11 @@ class WorkspaceAutoGen(AutoGen):
     # Validate build target
     def ValidateBuildTarget(self):
         if self.BuildTarget not in self.Platform.BuildTargets:
-            EdkLogger.error("build", PARAMETER_INVALID,
-                            ExtraData="Build target [%s] is not supported by the platform. [Valid target: %s]"
-                                      % (self.BuildTarget, " ".join(self.Platform.BuildTargets)))
+            EdkLogger.error(
+                "build",
+                PARAMETER_INVALID,
+                ExtraData=f'Build target [{self.BuildTarget}] is not supported by the platform. [Valid target: {" ".join(self.Platform.BuildTargets)}]',
+            )
 
     def CollectPlatformGuids(self):
         oriInfList = []
@@ -192,62 +197,82 @@ class WorkspaceAutoGen(AutoGen):
                 for FdRegion in FdDict.RegionList:
                     if str(FdRegion.RegionType) == 'FILE' and self.Platform.VpdToolGuid in str(FdRegion.RegionDataList):
                         if int(FdRegion.Offset) % 8 != 0:
-                            EdkLogger.error("build", FORMAT_INVALID, 'The VPD Base Address %s must be 8-byte aligned.' % (FdRegion.Offset))
+                            EdkLogger.error(
+                                "build",
+                                FORMAT_INVALID,
+                                f'The VPD Base Address {FdRegion.Offset} must be 8-byte aligned.',
+                            )
             FdfProfile = Fdf.Profile
         else:
             if self.FdTargetList:
-                EdkLogger.info("No flash definition file found. FD [%s] will be ignored." % " ".join(self.FdTargetList))
+                EdkLogger.info(
+                    f'No flash definition file found. FD [{" ".join(self.FdTargetList)}] will be ignored.'
+                )
                 self.FdTargetList = []
             if self.FvTargetList:
-                EdkLogger.info("No flash definition file found. FV [%s] will be ignored." % " ".join(self.FvTargetList))
+                EdkLogger.info(
+                    f'No flash definition file found. FV [{" ".join(self.FvTargetList)}] will be ignored.'
+                )
                 self.FvTargetList = []
             if self.CapTargetList:
-                EdkLogger.info("No flash definition file found. Capsule [%s] will be ignored." % " ".join(self.CapTargetList))
+                EdkLogger.info(
+                    f'No flash definition file found. Capsule [{" ".join(self.CapTargetList)}] will be ignored.'
+                )
                 self.CapTargetList = []
 
         return FdfProfile
 
     def ProcessModuleFromPdf(self):
 
-        if self.FdfProfile:
-            for fvname in self.FvTargetList:
-                if fvname.upper() not in self.FdfProfile.FvDict:
-                    EdkLogger.error("build", OPTION_VALUE_INVALID,
-                                    "No such an FV in FDF file: %s" % fvname)
+        if not self.FdfProfile:
+            return
+        for fvname in self.FvTargetList:
+            if fvname.upper() not in self.FdfProfile.FvDict:
+                EdkLogger.error(
+                    "build",
+                    OPTION_VALUE_INVALID,
+                    f"No such an FV in FDF file: {fvname}",
+                )
 
             # In DSC file may use FILE_GUID to override the module, then in the Platform.Modules use FILE_GUIDmodule.inf as key,
             # but the path (self.MetaFile.Path) is the real path
-            for key in self.FdfProfile.InfDict:
-                if key == 'ArchTBD':
-                    MetaFile_cache = defaultdict(set)
+        for key in self.FdfProfile.InfDict:
+            if key == 'ArchTBD':
+                MetaFile_cache = defaultdict(set)
+                for Arch in self.ArchList:
+                    Current_Platform_cache = self.BuildDatabase[self.MetaFile, Arch, self.BuildTarget, self.ToolChain]
+                    for Pkey in Current_Platform_cache.Modules:
+                        MetaFile_cache[Arch].add(Current_Platform_cache.Modules[Pkey].MetaFile)
+                for Inf in self.FdfProfile.InfDict[key]:
+                    ModuleFile = PathClass(NormPath(Inf), GlobalData.gWorkspace, Arch)
                     for Arch in self.ArchList:
-                        Current_Platform_cache = self.BuildDatabase[self.MetaFile, Arch, self.BuildTarget, self.ToolChain]
-                        for Pkey in Current_Platform_cache.Modules:
-                            MetaFile_cache[Arch].add(Current_Platform_cache.Modules[Pkey].MetaFile)
-                    for Inf in self.FdfProfile.InfDict[key]:
-                        ModuleFile = PathClass(NormPath(Inf), GlobalData.gWorkspace, Arch)
-                        for Arch in self.ArchList:
-                            if ModuleFile in MetaFile_cache[Arch]:
-                                break
-                        else:
+                        if ModuleFile in MetaFile_cache[Arch]:
+                            break
+                    else:
+                        ModuleData = self.BuildDatabase[ModuleFile, Arch, self.BuildTarget, self.ToolChain]
+                        if not ModuleData.IsBinaryModule:
+                            EdkLogger.error(
+                                'build',
+                                PARSER_ERROR,
+                                f"Module {ModuleFile} NOT found in DSC file; Is it really a binary module?",
+                            )
+
+            else:
+                for Arch in self.ArchList:
+                    if Arch == key:
+                        Platform = self.BuildDatabase[self.MetaFile, Arch, self.BuildTarget, self.ToolChain]
+                        MetaFileList = {Platform.Modules[Pkey].MetaFile for Pkey in Platform.Modules}
+                        for Inf in self.FdfProfile.InfDict[key]:
+                            ModuleFile = PathClass(NormPath(Inf), GlobalData.gWorkspace, Arch)
+                            if ModuleFile in MetaFileList:
+                                continue
                             ModuleData = self.BuildDatabase[ModuleFile, Arch, self.BuildTarget, self.ToolChain]
                             if not ModuleData.IsBinaryModule:
-                                EdkLogger.error('build', PARSER_ERROR, "Module %s NOT found in DSC file; Is it really a binary module?" % ModuleFile)
-
-                else:
-                    for Arch in self.ArchList:
-                        if Arch == key:
-                            Platform = self.BuildDatabase[self.MetaFile, Arch, self.BuildTarget, self.ToolChain]
-                            MetaFileList = set()
-                            for Pkey in Platform.Modules:
-                                MetaFileList.add(Platform.Modules[Pkey].MetaFile)
-                            for Inf in self.FdfProfile.InfDict[key]:
-                                ModuleFile = PathClass(NormPath(Inf), GlobalData.gWorkspace, Arch)
-                                if ModuleFile in MetaFileList:
-                                    continue
-                                ModuleData = self.BuildDatabase[ModuleFile, Arch, self.BuildTarget, self.ToolChain]
-                                if not ModuleData.IsBinaryModule:
-                                    EdkLogger.error('build', PARSER_ERROR, "Module %s NOT found in DSC file; Is it really a binary module?" % ModuleFile)
+                                EdkLogger.error(
+                                    'build',
+                                    PARSER_ERROR,
+                                    f"Module {ModuleFile} NOT found in DSC file; Is it really a binary module?",
+                                )
 
 
 
@@ -295,21 +320,19 @@ class WorkspaceAutoGen(AutoGen):
                                     if PcdInPlatform.Type:
                                         BuildData.Pcds[key].Type = PcdInPlatform.Type
                                         BuildData.Pcds[key].Pending = False
-                            else:
-                                #Pcd used in Library, Pcd Type from reference module if Pcd Type is Pending
-                                if BuildData.Pcds[key].Pending:
-                                    if bool(BuildData.LibraryClass):
-                                        if BuildData in set(Libs):
-                                            ReferenceModules = BuildData.ReferenceModules
-                                            for ReferenceModule in ReferenceModules:
-                                                if ReferenceModule.MetaFile in Platform.Modules:
-                                                    RefPlatformModule = Platform.Modules[str(ReferenceModule.MetaFile)]
-                                                    if key in RefPlatformModule.Pcds:
-                                                        PcdInReferenceModule = RefPlatformModule.Pcds[key]
-                                                        if PcdInReferenceModule.Type:
-                                                            BuildData.Pcds[key].Type = PcdInReferenceModule.Type
-                                                            BuildData.Pcds[key].Pending = False
-                                                            break
+                            elif BuildData.Pcds[key].Pending:
+                                if bool(BuildData.LibraryClass):
+                                    if BuildData in set(Libs):
+                                        ReferenceModules = BuildData.ReferenceModules
+                                        for ReferenceModule in ReferenceModules:
+                                            if ReferenceModule.MetaFile in Platform.Modules:
+                                                RefPlatformModule = Platform.Modules[str(ReferenceModule.MetaFile)]
+                                                if key in RefPlatformModule.Pcds:
+                                                    PcdInReferenceModule = RefPlatformModule.Pcds[key]
+                                                    if PcdInReferenceModule.Type:
+                                                        BuildData.Pcds[key].Type = PcdInReferenceModule.Type
+                                                        BuildData.Pcds[key].Pending = False
+                                                        break
 
     def ProcessMixedPcd(self):
         for Arch in self.ArchList:
@@ -332,11 +355,10 @@ class WorkspaceAutoGen(AutoGen):
                                 SourcePcdDict[TAB_PCDS_DYNAMIC_EX].add((BuildData.Pcds[key].TokenCName, BuildData.Pcds[key].TokenSpaceGuidCName))
 
                         elif TAB_PCDS_PATCHABLE_IN_MODULE in BuildData.Pcds[key].Type:
-                            if BuildData.MetaFile.Ext == '.inf':
-                                if BuildData.IsBinaryModule:
-                                    BinaryPcdDict[TAB_PCDS_PATCHABLE_IN_MODULE].add((BuildData.Pcds[key].TokenCName, BuildData.Pcds[key].TokenSpaceGuidCName))
-                                else:
-                                    SourcePcdDict[TAB_PCDS_PATCHABLE_IN_MODULE].add((BuildData.Pcds[key].TokenCName, BuildData.Pcds[key].TokenSpaceGuidCName))
+                            if BuildData.IsBinaryModule:
+                                BinaryPcdDict[TAB_PCDS_PATCHABLE_IN_MODULE].add((BuildData.Pcds[key].TokenCName, BuildData.Pcds[key].TokenSpaceGuidCName))
+                            else:
+                                SourcePcdDict[TAB_PCDS_PATCHABLE_IN_MODULE].add((BuildData.Pcds[key].TokenCName, BuildData.Pcds[key].TokenSpaceGuidCName))
 
                         elif TAB_PCDS_DYNAMIC in BuildData.Pcds[key].Type:
                             SourcePcdDict[TAB_PCDS_DYNAMIC].add((BuildData.Pcds[key].TokenCName, BuildData.Pcds[key].TokenSpaceGuidCName))
@@ -352,10 +374,12 @@ class WorkspaceAutoGen(AutoGen):
                         Intersections = SourcePcdDict[i].intersection(SourcePcdDict[j])
                         if len(Intersections) > 0:
                             EdkLogger.error(
-                            'build',
-                            FORMAT_INVALID,
-                            "Building modules from source INFs, following PCD use %s and %s access method. It must be corrected to use only one access method." % (i, j),
-                            ExtraData='\n\t'.join(str(P[1]+'.'+P[0]) for P in Intersections)
+                                'build',
+                                FORMAT_INVALID,
+                                f"Building modules from source INFs, following PCD use {i} and {j} access method. It must be corrected to use only one access method.",
+                                ExtraData='\n\t'.join(
+                                    str(f'{P[1]}.{P[0]}') for P in Intersections
+                                ),
                             )
 
             #
@@ -366,8 +390,8 @@ class WorkspaceAutoGen(AutoGen):
                     if i != j:
                         Intersections = BinaryPcdDict[i].intersection(BinaryPcdDict[j])
                         for item in Intersections:
-                            NewPcd1 = (item[0] + '_' + i, item[1])
-                            NewPcd2 = (item[0] + '_' + j, item[1])
+                            NewPcd1 = f'{item[0]}_{i}', item[1]
+                            NewPcd2 = f'{item[0]}_{j}', item[1]
                             if item not in GlobalData.MixedPcd:
                                 GlobalData.MixedPcd[item] = [NewPcd1, NewPcd2]
                             else:
@@ -384,8 +408,8 @@ class WorkspaceAutoGen(AutoGen):
                     if i != j:
                         Intersections = SourcePcdDict[i].intersection(BinaryPcdDict[j])
                         for item in Intersections:
-                            NewPcd1 = (item[0] + '_' + i, item[1])
-                            NewPcd2 = (item[0] + '_' + j, item[1])
+                            NewPcd1 = f'{item[0]}_{i}', item[1]
+                            NewPcd2 = f'{item[0]}_{j}', item[1]
                             if item not in GlobalData.MixedPcd:
                                 GlobalData.MixedPcd[item] = [NewPcd1, NewPcd2]
                             else:
@@ -401,9 +425,9 @@ class WorkspaceAutoGen(AutoGen):
                         for item in GlobalData.MixedPcd[SinglePcd]:
                             Pcd_Type = item[0].split('_')[-1]
                             if (Pcd_Type == BuildData.Pcds[key].Type) or (Pcd_Type == TAB_PCDS_DYNAMIC_EX and BuildData.Pcds[key].Type in PCD_DYNAMIC_EX_TYPE_SET) or \
-                               (Pcd_Type == TAB_PCDS_DYNAMIC and BuildData.Pcds[key].Type in PCD_DYNAMIC_TYPE_SET):
+                                   (Pcd_Type == TAB_PCDS_DYNAMIC and BuildData.Pcds[key].Type in PCD_DYNAMIC_TYPE_SET):
                                 Value = BuildData.Pcds[key]
-                                Value.TokenCName = BuildData.Pcds[key].TokenCName + '_' + Pcd_Type
+                                Value.TokenCName = f'{BuildData.Pcds[key].TokenCName}_{Pcd_Type}'
                                 if len(key) == 2:
                                     newkey = (Value.TokenCName, key[1])
                                 elif len(key) == 3:
@@ -429,10 +453,7 @@ class WorkspaceAutoGen(AutoGen):
         if not self.FdfFile:
             self.FdfFile = self.Platform.FlashDefinition
 
-        if self.FdfFile:
-            ModuleList = self.FdfProfile.InfList
-        else:
-            ModuleList = []
+        ModuleList = self.FdfProfile.InfList if self.FdfFile else []
         Pkgs = {}
         for Arch in self.ArchList:
             Platform = self.BuildDatabase[self.MetaFile, Arch, self.BuildTarget, self.ToolChain]
@@ -466,24 +487,30 @@ class WorkspaceAutoGen(AutoGen):
                     EdkLogger.error(
                         'build',
                         PARSER_ERROR,
-                        "PCD (%s.%s) used in FDF is not declared in DEC files." % (Guid, Name),
-                        File = self.FdfProfile.PcdFileLineDict[Name, Guid, Fileds][0],
-                        Line = self.FdfProfile.PcdFileLineDict[Name, Guid, Fileds][1]
+                        f"PCD ({Guid}.{Name}) used in FDF is not declared in DEC files.",
+                        File=self.FdfProfile.PcdFileLineDict[Name, Guid, Fileds][
+                            0
+                        ],
+                        Line=self.FdfProfile.PcdFileLineDict[Name, Guid, Fileds][
+                            1
+                        ],
                     )
-                else:
-                    # Check whether Dynamic or DynamicEx PCD used in FDF file. If used, build break and give a error message.
-                    if (Name, Guid, TAB_PCDS_FIXED_AT_BUILD) in DecPcdsKey \
-                        or (Name, Guid, TAB_PCDS_PATCHABLE_IN_MODULE) in DecPcdsKey \
-                        or (Name, Guid, TAB_PCDS_FEATURE_FLAG) in DecPcdsKey:
-                        continue
-                    elif (Name, Guid, TAB_PCDS_DYNAMIC) in DecPcdsKey or (Name, Guid, TAB_PCDS_DYNAMIC_EX) in DecPcdsKey:
-                        EdkLogger.error(
-                                'build',
-                                PARSER_ERROR,
-                                "Using Dynamic or DynamicEx type of PCD [%s.%s] in FDF file is not allowed." % (Guid, Name),
-                                File = self.FdfProfile.PcdFileLineDict[Name, Guid, Fileds][0],
-                                Line = self.FdfProfile.PcdFileLineDict[Name, Guid, Fileds][1]
-                        )
+                elif (Name, Guid, TAB_PCDS_FIXED_AT_BUILD) in DecPcdsKey \
+                            or (Name, Guid, TAB_PCDS_PATCHABLE_IN_MODULE) in DecPcdsKey \
+                            or (Name, Guid, TAB_PCDS_FEATURE_FLAG) in DecPcdsKey:
+                    continue
+                elif (Name, Guid, TAB_PCDS_DYNAMIC) in DecPcdsKey or (Name, Guid, TAB_PCDS_DYNAMIC_EX) in DecPcdsKey:
+                    EdkLogger.error(
+                        'build',
+                        PARSER_ERROR,
+                        f"Using Dynamic or DynamicEx type of PCD [{Guid}.{Name}] in FDF file is not allowed.",
+                        File=self.FdfProfile.PcdFileLineDict[Name, Guid, Fileds][
+                            0
+                        ],
+                        Line=self.FdfProfile.PcdFileLineDict[Name, Guid, Fileds][
+                            1
+                        ],
+                    )
     def CollectAllPcds(self):
 
         for Arch in self.ArchList:
@@ -520,11 +547,7 @@ class WorkspaceAutoGen(AutoGen):
 
 
     def CreateBuildOptionsFile(self):
-        #
-        # Create BuildOptions Macro & PCD metafile, also add the Active Platform and FDF file.
-        #
-        content = 'gCommandLineDefines: '
-        content += str(GlobalData.gCommandLineDefines)
+        content = f'gCommandLineDefines: {str(GlobalData.gCommandLineDefines)}'
         content += TAB_LINE_BREAK
         content += 'BuildOptionPcd: '
         content += str(GlobalData.BuildOptionPcd)
@@ -574,26 +597,32 @@ class WorkspaceAutoGen(AutoGen):
             for file in AllWorkSpaceMetaFileList:
                 if file.endswith('.dec'):
                     continue
-                f = open(file, 'rb')
-                Content = f.read()
-                f.close()
+                with open(file, 'rb') as f:
+                    Content = f.read()
                 m.update(Content)
                 FileList.append((str(file), hashlib.md5(Content).hexdigest()))
 
             HashDir = path.join(self.BuildDir, "Hash_Platform")
-            HashFile = path.join(HashDir, 'Platform.hash.' + m.hexdigest())
+            HashFile = path.join(HashDir, f'Platform.hash.{m.hexdigest()}')
             SaveFileOnChange(HashFile, m.hexdigest(), False)
-            HashChainFile = path.join(HashDir, 'Platform.hashchain.' + m.hexdigest())
+            HashChainFile = path.join(HashDir, f'Platform.hashchain.{m.hexdigest()}')
             GlobalData.gPlatformHashFile = HashChainFile
             try:
                 with open(HashChainFile, 'w') as f:
                     json.dump(FileList, f, indent=2)
             except:
-                EdkLogger.quiet("[cache warning]: fail to save hashchain file:%s" % HashChainFile)
+                EdkLogger.quiet(
+                    f"[cache warning]: fail to save hashchain file:{HashChainFile}"
+                )
 
             if GlobalData.gBinCacheDest:
                 # Copy platform hash files to cache destination
-                FileDir = path.join(GlobalData.gBinCacheDest, self.OutputDir, self.BuildTarget + "_" + self.ToolChain, "Hash_Platform")
+                FileDir = path.join(
+                    GlobalData.gBinCacheDest,
+                    self.OutputDir,
+                    f"{self.BuildTarget}_{self.ToolChain}",
+                    "Hash_Platform",
+                )
                 CacheFileDir = FileDir
                 CreateDirectory(CacheFileDir)
                 CopyFileOnChange(HashFile, CacheFileDir)
@@ -618,41 +647,48 @@ class WorkspaceAutoGen(AutoGen):
 
         PkgDir = os.path.join(self.BuildDir, Pkg.Arch, "Hash_Pkg", Pkg.PackageName)
         CreateDirectory(PkgDir)
-        FileList = []
         m = hashlib.md5()
-        # Get .dec file's hash value
-        f = open(Pkg.MetaFile.Path, 'rb')
-        Content = f.read()
-        f.close()
+        with open(Pkg.MetaFile.Path, 'rb') as f:
+            Content = f.read()
         m.update(Content)
-        FileList.append((str(Pkg.MetaFile.Path), hashlib.md5(Content).hexdigest()))
+        FileList = [(str(Pkg.MetaFile.Path), hashlib.md5(Content).hexdigest())]
         # Get include files hash value
         if Pkg.Includes:
             for inc in sorted(Pkg.Includes, key=lambda x: str(x)):
                 for Root, Dirs, Files in os.walk(str(inc)):
                     for File in sorted(Files):
                         File_Path = os.path.join(Root, File)
-                        f = open(File_Path, 'rb')
-                        Content = f.read()
-                        f.close()
+                        with open(File_Path, 'rb') as f:
+                            Content = f.read()
                         m.update(Content)
                         FileList.append((str(File_Path), hashlib.md5(Content).hexdigest()))
         GlobalData.gPackageHash[Pkg.PackageName] = m.hexdigest()
 
         HashDir = PkgDir
-        HashFile = path.join(HashDir, Pkg.PackageName + '.hash.' + m.hexdigest())
+        HashFile = path.join(HashDir, f'{Pkg.PackageName}.hash.{m.hexdigest()}')
         SaveFileOnChange(HashFile, m.hexdigest(), False)
-        HashChainFile = path.join(HashDir, Pkg.PackageName + '.hashchain.' + m.hexdigest())
+        HashChainFile = path.join(
+            HashDir, f'{Pkg.PackageName}.hashchain.{m.hexdigest()}'
+        )
         GlobalData.gPackageHashFile[(Pkg.PackageName, Pkg.Arch)] = HashChainFile
         try:
             with open(HashChainFile, 'w') as f:
                 json.dump(FileList, f, indent=2)
         except:
-            EdkLogger.quiet("[cache warning]: fail to save hashchain file:%s" % HashChainFile)
+            EdkLogger.quiet(
+                f"[cache warning]: fail to save hashchain file:{HashChainFile}"
+            )
 
         if GlobalData.gBinCacheDest:
             # Copy Pkg hash files to cache destination dir
-            FileDir = path.join(GlobalData.gBinCacheDest, self.OutputDir, self.BuildTarget + "_" + self.ToolChain, Pkg.Arch, "Hash_Pkg", Pkg.PackageName)
+            FileDir = path.join(
+                GlobalData.gBinCacheDest,
+                self.OutputDir,
+                f"{self.BuildTarget}_{self.ToolChain}",
+                Pkg.Arch,
+                "Hash_Pkg",
+                Pkg.PackageName,
+            )
             CacheFileDir = FileDir
             CreateDirectory(CacheFileDir)
             CopyFileOnChange(HashFile, CacheFileDir)
@@ -737,9 +773,8 @@ class WorkspaceAutoGen(AutoGen):
                             EdkLogger.error(
                                 'build',
                                 FORMAT_INVALID,
-                                "Type [%s] of PCD [%s.%s] in DSC file doesn't match the type [%s] defined in DEC file." \
-                                % (Pa.Platform.Pcds[Pcd].Type, Pcd[1], Pcd[0], Type),
-                                ExtraData=None
+                                f"Type [{Pa.Platform.Pcds[Pcd].Type}] of PCD [{Pcd[1]}.{Pcd[0]}] in DSC file doesn't match the type [{Type}] defined in DEC file.",
+                                ExtraData=None,
                             )
                             return
                 else:
@@ -755,7 +790,7 @@ class WorkspaceAutoGen(AutoGen):
             )
 
     def __repr__(self):
-        return "%s [%s]" % (self.MetaFile, ", ".join(self.ArchList))
+        return f'{self.MetaFile} [{", ".join(self.ArchList)}]'
 
     ## Return the directory to store FV files
     @cached_property

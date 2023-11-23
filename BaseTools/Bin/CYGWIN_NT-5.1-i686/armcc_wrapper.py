@@ -27,7 +27,13 @@ import pipes
 # Currently not used, but just in case we need it in the future
 #
 def ConvertCygPathToDosViacygpath(CygPath):
-  p = subprocess.Popen("cygpath -m " + pipes.quote(CygPath), shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
+  p = subprocess.Popen(
+      f"cygpath -m {pipes.quote(CygPath)}",
+      shell=True,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+      close_fds=True,
+  )
   return p.stdout.read().strip()
 
 #
@@ -36,7 +42,7 @@ def ConvertCygPathToDosViacygpath(CygPath):
 def ConvertCygPathToDos(CygPath):
   if CygPath.find("/cygdrive/") == 0:
     # convert /cygdrive/c/Xyz to c:/Xyz
-    DosPath = CygPath[10] + ':' + CygPath[11:]
+    DosPath = f'{CygPath[10]}:{CygPath[11:]}'
   else:
     DosPath = CygPath
 
@@ -58,18 +64,18 @@ def main(argv):
   for arg in argv:
     if arg.find('/') == -1:
       # if we don't need to convert just add to the command line
-      Command = Command + ' ' + pipes.quote(arg)
+      Command = f'{Command} {pipes.quote(arg)}'
     elif arg in ExceptionList:
       # if it is in the list, then don't do a cygpath
       # assembler stuff after --apcs has the /.
-      Command = Command + ' ' + pipes.quote(arg)
+      Command = f'{Command} {pipes.quote(arg)}'
     else:
-      if ((arg[0] == '-') and (arg[1] == 'I' or arg[1] == 'i')):
+      if arg[0] == '-' and arg[1] in ['I', 'i']:
         CygPath = arg[0] + arg[1] + ConvertCygPathToDos(arg[2:])
       else:
         CygPath = ConvertCygPathToDos(arg)
 
-      Command = Command + ' ' + pipes.quote(CygPath)
+      Command = f'{Command} {pipes.quote(CygPath)}'
 
   # call the real tool with the converted paths
   return subprocess.call(Command, shell=True)
@@ -77,10 +83,10 @@ def main(argv):
 
 if __name__ == "__main__":
   try:
-     ret = main(sys.argv[2:])
+    ret = main(sys.argv[2:])
 
   except:
-    print("exiting: exception from " + sys.argv[0])
+    print(f"exiting: exception from {sys.argv[0]}")
     ret = 2
 
   sys.exit(ret)

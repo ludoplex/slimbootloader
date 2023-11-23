@@ -47,9 +47,8 @@ class VariableMgr(object):
             return ""
         self.NVHeaderBuff = self.NVHeaderBuff[:8] + pack("=Q", maxsize)
         default_var_bin = VariableMgr.format_data(self.NVHeaderBuff + self.VarDefaultBuff + self.VarDeltaBuff)
-        value_str = "{"
         default_var_bin_strip = [ data.strip("""'""") for data in default_var_bin]
-        value_str += ",".join(default_var_bin_strip)
+        value_str = "{" + ",".join(default_var_bin_strip)
         value_str += "}"
         return value_str
 
@@ -68,10 +67,11 @@ class VariableMgr(object):
             if firstdata_type in DataType.TAB_PCD_NUMERIC_TYPES:
                 fisrtdata_flag = DataType.PACK_CODE_BY_SIZE[MAX_SIZE_TYPE[firstdata_type]]
                 fisrtdata = fisrtvalue_list[0]
-                fisrtvalue_list = []
                 pack_data = pack(fisrtdata_flag, int(fisrtdata, 0))
-                for data_byte in range(len(pack_data)):
-                    fisrtvalue_list.append(hex(unpack("B", pack_data[data_byte:data_byte + 1])[0]))
+                fisrtvalue_list = [
+                    hex(unpack("B", pack_data[data_byte : data_byte + 1])[0])
+                    for data_byte in range(len(pack_data))
+                ]
             newvalue_list = ["0x00"] * FirstOffset + fisrtvalue_list
 
             for var_item in sku_var_info_offset_list[1:]:
@@ -81,10 +81,11 @@ class VariableMgr(object):
                 if Curdata_type in DataType.TAB_PCD_NUMERIC_TYPES:
                     data_flag = DataType.PACK_CODE_BY_SIZE[MAX_SIZE_TYPE[Curdata_type]]
                     data = CurvalueList[0]
-                    CurvalueList = []
                     pack_data = pack(data_flag, int(data, 0))
-                    for data_byte in range(len(pack_data)):
-                        CurvalueList.append(hex(unpack("B", pack_data[data_byte:data_byte + 1])[0]))
+                    CurvalueList = [
+                        hex(unpack("B", pack_data[data_byte : data_byte + 1])[0])
+                        for data_byte in range(len(pack_data))
+                    ]
                 if CurOffset > len(newvalue_list):
                     newvalue_list = newvalue_list + ["0x00"] * (CurOffset - len(newvalue_list)) + CurvalueList
                 else:
@@ -116,7 +117,13 @@ class VariableMgr(object):
             if default_sku_default.data_type not in DataType.TAB_PCD_NUMERIC_TYPES:
                 var_max_len = max(len(var_item.default_value.split(",")) for var_item in sku_var_info.values())
                 if len(default_sku_default.default_value.split(",")) < var_max_len:
-                    tail = ",".join("0x00" for i in range(var_max_len-len(default_sku_default.default_value.split(","))))
+                    tail = ",".join(
+                        "0x00"
+                        for _ in range(
+                            var_max_len
+                            - len(default_sku_default.default_value.split(","))
+                        )
+                    )
 
             default_data_buffer = VariableMgr.PACK_VARIABLES_DATA(default_sku_default.default_value, default_sku_default.data_type, tail)
 
@@ -134,7 +141,13 @@ class VariableMgr(object):
 
                 if default_sku_default.data_type not in DataType.TAB_PCD_NUMERIC_TYPES:
                     if len(other_sku_other.default_value.split(",")) < var_max_len:
-                        tail = ",".join("0x00" for i in range(var_max_len-len(other_sku_other.default_value.split(","))))
+                        tail = ",".join(
+                            "0x00"
+                            for _ in range(
+                                var_max_len
+                                - len(other_sku_other.default_value.split(","))
+                            )
+                        )
 
                 others_data_buffer = VariableMgr.PACK_VARIABLES_DATA(other_sku_other.default_value, other_sku_other.data_type, tail)
 
@@ -230,19 +243,17 @@ class VariableMgr(object):
     def calculate_delta(default, theother):
         if len(default) - len(theother) != 0:
             EdkLogger.error("build", FORMAT_INVALID, 'The variable data length is not the same for the same PCD.')
-        data_delta = []
-        for i in range(len(default)):
-            if default[i] != theother[i]:
-                data_delta.append((i, theother[i]))
-        return data_delta
+        return [
+            (i, theother[i])
+            for i in range(len(default))
+            if default[i] != theother[i]
+        ]
 
     def dump(self):
 
-        default_var_bin = self.new_process_varinfo()
-        if default_var_bin:
-            value_str = "{"
+        if default_var_bin := self.new_process_varinfo():
             default_var_bin_strip = [ data.strip("""'""") for data in default_var_bin]
-            value_str += ",".join(default_var_bin_strip)
+            value_str = "{" + ",".join(default_var_bin_strip)
             value_str += "}"
             return value_str
         return ""
@@ -262,13 +273,13 @@ class VariableMgr(object):
 
         return GuidBuffer + SizeBuffer + FormatBuffer + StateBuffer + reservedBuffer
 
-    def PACK_AUTHENTICATED_VARIABLE_STORE_HEADER(size):
+    def PACK_AUTHENTICATED_VARIABLE_STORE_HEADER(self):
         #Signature: gEfiAuthenticatedVariableGuid
         Guid = "{ 0xaaf32c78, 0x947b, 0x439a, { 0xa1, 0x80, 0x2e, 0x14, 0x4e, 0xc3, 0x77, 0x92 }}"
         Guid = GuidStructureStringToGuidString(Guid)
         GuidBuffer = PackGUID(Guid.split('-'))
 
-        SizeBuffer = pack('=L', size)
+        SizeBuffer = pack('=L', self)
         FormatBuffer = pack('=B', 0x5A)
         StateBuffer = pack('=B', 0xFE)
         reservedBuffer = pack('=H', 0)
@@ -379,9 +390,7 @@ class VariableMgr(object):
         return Buffer
 
     def GetSkuId(self, skuname):
-        if skuname not in self.SkuIdMap:
-            return None
-        return self.SkuIdMap.get(skuname)[0]
+        return None if skuname not in self.SkuIdMap else self.SkuIdMap.get(skuname)[0]
 
     def GetDefaultStoreId(self, dname):
         if dname not in self.DefaultStoreMap:
@@ -406,8 +415,8 @@ class VariableMgr(object):
     @staticmethod
     def AlignData(data, align = 4):
         mybuffer = data
-        if (len(data) % align) > 0:
-            for i in range(align - (len(data) % align)):
+        if len(mybuffer) % align > 0:
+            for _ in range(align - len(mybuffer) % align):
                 mybuffer += pack("=B", 0)
 
         return mybuffer

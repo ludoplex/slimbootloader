@@ -51,7 +51,7 @@ COMMENT = '// '
 DEFINE_STR = '#define'
 COMMENT_DEFINE_STR = COMMENT + DEFINE_STR
 NOT_REFERENCED = 'not referenced'
-COMMENT_NOT_REFERENCED = ' ' + COMMENT + NOT_REFERENCED
+COMMENT_NOT_REFERENCED = f' {COMMENT}{NOT_REFERENCED}'
 CHAR_ARRAY_DEFIN = 'unsigned char'
 COMMON_FILE_NAME = 'Strings'
 STRING_TOKEN = re.compile('STRING_TOKEN *\(([A-Z0-9_]+) *\)', re.MULTILINE | re.UNICODE)
@@ -105,7 +105,7 @@ def DecToHexStr(Dec, Digit = 8):
 #
 def DecToHexList(Dec, Digit = 8):
     Hex = '{0:0{1}X}'.format(Dec, Digit)
-    return ["0x" + Hex[Bit:Bit + 2] for Bit in range(Digit - 2, -1, -2)]
+    return [f"0x{Hex[Bit:Bit + 2]}" for Bit in range(Digit - 2, -1, -2)]
 
 ## Convert a acsii string to a hex list
 #
@@ -136,9 +136,23 @@ def AscToHexList(Ascii):
 def CreateHFileContent(BaseName, UniObjectClass, IsCompatibleMode, UniGenCFlag):
     Str = []
     ValueStartPtr = 60
-    Line = COMMENT_DEFINE_STR + ' ' + LANGUAGE_NAME_STRING_NAME + ' ' * (ValueStartPtr - len(DEFINE_STR + LANGUAGE_NAME_STRING_NAME)) + DecToHexStr(0, 4) + COMMENT_NOT_REFERENCED
+    Line = (
+        f'{COMMENT_DEFINE_STR} {LANGUAGE_NAME_STRING_NAME}'
+        + ' ' * (ValueStartPtr - len(DEFINE_STR + LANGUAGE_NAME_STRING_NAME))
+        + DecToHexStr(0, 4)
+        + COMMENT_NOT_REFERENCED
+    )
     Str = WriteLine(Str, Line)
-    Line = COMMENT_DEFINE_STR + ' ' + PRINTABLE_LANGUAGE_NAME_STRING_NAME + ' ' * (ValueStartPtr - len(DEFINE_STR + PRINTABLE_LANGUAGE_NAME_STRING_NAME)) + DecToHexStr(1, 4) + COMMENT_NOT_REFERENCED
+    Line = (
+        f'{COMMENT_DEFINE_STR} {PRINTABLE_LANGUAGE_NAME_STRING_NAME}'
+        + ' '
+        * (
+            ValueStartPtr
+            - len(DEFINE_STR + PRINTABLE_LANGUAGE_NAME_STRING_NAME)
+        )
+        + DecToHexStr(1, 4)
+        + COMMENT_NOT_REFERENCED
+    )
     Str = WriteLine(Str, Line)
     UnusedStr = ''
 
@@ -152,22 +166,31 @@ def CreateHFileContent(BaseName, UniObjectClass, IsCompatibleMode, UniGenCFlag):
             Line = ''
             if Referenced == True:
                 if (ValueStartPtr - len(DEFINE_STR + Name)) <= 0:
-                    Line = DEFINE_STR + ' ' + Name + ' ' + DecToHexStr(Token, 4)
+                    Line = f'{DEFINE_STR} {Name} {DecToHexStr(Token, 4)}'
                 else:
-                    Line = DEFINE_STR + ' ' + Name + ' ' * (ValueStartPtr - len(DEFINE_STR + Name)) + DecToHexStr(Token, 4)
+                    Line = (
+                        f'{DEFINE_STR} {Name}'
+                        + ' ' * (ValueStartPtr - len(DEFINE_STR + Name))
+                        + DecToHexStr(Token, 4)
+                    )
                 Str = WriteLine(Str, Line)
             else:
                 if (ValueStartPtr - len(DEFINE_STR + Name)) <= 0:
-                    Line = COMMENT_DEFINE_STR + ' ' + Name + ' ' + DecToHexStr(Token, 4) + COMMENT_NOT_REFERENCED
+                    Line = f'{COMMENT_DEFINE_STR} {Name} {DecToHexStr(Token, 4)}{COMMENT_NOT_REFERENCED}'
                 else:
-                    Line = COMMENT_DEFINE_STR + ' ' + Name + ' ' * (ValueStartPtr - len(DEFINE_STR + Name)) + DecToHexStr(Token, 4) + COMMENT_NOT_REFERENCED
+                    Line = (
+                        f'{COMMENT_DEFINE_STR} {Name}'
+                        + ' ' * (ValueStartPtr - len(DEFINE_STR + Name))
+                        + DecToHexStr(Token, 4)
+                        + COMMENT_NOT_REFERENCED
+                    )
                 UnusedStr = WriteLine(UnusedStr, Line)
 
     Str.extend( UnusedStr)
 
     Str = WriteLine(Str, '')
     if IsCompatibleMode or UniGenCFlag:
-        Str = WriteLine(Str, 'extern unsigned char ' + BaseName + 'Strings[];')
+        Str = WriteLine(Str, f'extern unsigned char {BaseName}Strings[];')
     return "".join(Str)
 
 ## Create a complete .h file
@@ -216,7 +239,7 @@ def CreateArrayItem(Array, Width = 16):
             Index = Index + 1
         else:
             ArrayItem = WriteLine(ArrayItem, Line)
-            Line = '  ' + Item + ',  '
+            Line = f'  {Item},  '
             Index = 1
     ArrayItem = Write(ArrayItem, Line.rstrip())
 
@@ -250,17 +273,15 @@ def GetFilteredLanguage(UniLanguageList, LanguageFilterList):
     UniLanguageListFiltered = []
     # if filter list is empty, then consider there is no filter
     if LanguageFilterList == []:
-        UniLanguageListFiltered = UniLanguageList
-        return UniLanguageListFiltered
+        return UniLanguageList
     for Language in LanguageFilterList:
         # first check for exact match
         if Language in UniLanguageList:
             if Language not in UniLanguageListFiltered:
                 UniLanguageListFiltered.append(Language)
-        # find the first one with the same/equivalent primary tag
         else:
             if Language.find('-') != -1:
-                PrimaryTag = Language[0:Language.find('-')].lower()
+                PrimaryTag = Language[:Language.find('-')].lower()
             else:
                 PrimaryTag = Language
 
@@ -269,7 +290,7 @@ def GetFilteredLanguage(UniLanguageList, LanguageFilterList):
 
             for UniLanguage in UniLanguageList:
                 if UniLanguage.find('-') != -1:
-                    UniLanguagePrimaryTag = UniLanguage[0:UniLanguage.find('-')].lower()
+                    UniLanguagePrimaryTag = UniLanguage[:UniLanguage.find('-')].lower()
                 else:
                     UniLanguagePrimaryTag = UniLanguage
 
@@ -324,10 +345,10 @@ def CreateCFileContent(BaseName, UniObjectClass, IsCompatibleMode, UniBinBuffer,
         # EDK module is using ISO639-2 format filter, convert to the RFC4646 format
         LanguageFilterList = [LangConvTable.get(F.lower()) for F in FilterInfo[1]]
 
-    UniLanguageList = []
-    for IndexI in range(len(UniObjectClass.LanguageDef)):
-        UniLanguageList += [UniObjectClass.LanguageDef[IndexI][0]]
-
+    UniLanguageList = [
+        UniObjectClass.LanguageDef[IndexI][0]
+        for IndexI in range(len(UniObjectClass.LanguageDef))
+    ]
     UniLanguageListFiltered = GetFilteredLanguage(UniLanguageList, LanguageFilterList)
 
 
@@ -347,7 +368,6 @@ def CreateCFileContent(BaseName, UniObjectClass, IsCompatibleMode, UniBinBuffer,
         for IndexJ in range(1, len(UniObjectClass.OrderedStringList[UniObjectClass.LanguageDef[IndexI][0]])):
             Item = UniObjectClass.OrderedStringListByToken[Language][IndexJ]
 
-            Name = Item.StringName
             Value = Item.StringValueByteList
             Referenced = Item.Referenced
             Token = Item.Token
@@ -364,7 +384,11 @@ def CreateCFileContent(BaseName, UniObjectClass, IsCompatibleMode, UniBinBuffer,
                     ArrayLength = ArrayLength + 3
                 if Referenced and Item.Token > 0:
                     Index = Index + 1
-                    StrStringValue = WriteLine(StrStringValue, "// %s: %s:%s" % (DecToHexStr(Index, 4), Name, DecToHexStr(Token, 4)))
+                    Name = Item.StringName
+                    StrStringValue = WriteLine(
+                        StrStringValue,
+                        f"// {DecToHexStr(Index, 4)}: {Name}:{DecToHexStr(Token, 4)}",
+                    )
                     StrStringValue = Write(StrStringValue, CreateCFileStringValue(Value))
                     CreateBinBuffer (StringBuffer, [StringBlockType] + Value)
                     ArrayLength = ArrayLength + Item.Length + 1 # 1 is for the length of string type
@@ -400,7 +424,7 @@ def CreateCFileContent(BaseName, UniObjectClass, IsCompatibleMode, UniBinBuffer,
         #
         # Add an EFI_HII_SIBT_END at last
         #
-        Str = WriteLine(Str, '  ' + EFI_HII_SIBT_END + ",")
+        Str = WriteLine(Str, f'  {EFI_HII_SIBT_END},')
 
         #
         # Create binary UNI string
@@ -415,7 +439,9 @@ def CreateCFileContent(BaseName, UniObjectClass, IsCompatibleMode, UniBinBuffer,
     # Create line for string variable name
     # "unsigned char $(BaseName)Strings[] = {"
     #
-    AllStr = WriteLine('', CHAR_ARRAY_DEFIN + ' ' + BaseName + COMMON_FILE_NAME + '[] = {\n')
+    AllStr = WriteLine(
+        '', f'{CHAR_ARRAY_DEFIN} {BaseName}{COMMON_FILE_NAME}' + '[] = {\n'
+    )
 
     if IsCompatibleMode:
         #
@@ -446,8 +472,7 @@ def CreateCFileContent(BaseName, UniObjectClass, IsCompatibleMode, UniBinBuffer,
 # @retval Str:           A string of .h file end
 #
 def CreateCFileEnd():
-    Str = Write('', '};')
-    return Str
+    return Write('', '};')
 
 ## Create a .c file
 #
@@ -499,7 +524,7 @@ def GetFileList(SourceFileList, IncludeList, SkipList):
             IsSkip = False
             for Skip in SkipList:
                 if os.path.splitext(File)[1].upper() == Skip.upper():
-                    EdkLogger.verbose("Skipped %s for string token uses search" % File)
+                    EdkLogger.verbose(f"Skipped {File} for string token uses search")
                     IsSkip = True
                     break
 
@@ -531,7 +556,7 @@ def SearchString(UniObjectClass, FileList, IsCompatibleMode):
                 Lines = open(File, 'r')
                 for Line in Lines:
                     for StrName in STRING_TOKEN.findall(Line):
-                        EdkLogger.debug(EdkLogger.DEBUG_5, "Found string identifier: " + StrName)
+                        EdkLogger.debug(EdkLogger.DEBUG_5, f"Found string identifier: {StrName}")
                         UniObjectClass.SetStringReferenced(StrName)
         except:
             EdkLogger.error("UnicodeStringGather", AUTOGEN_ERROR, "SearchString: Error while processing file", File=File, RaiseError=False)
@@ -563,9 +588,10 @@ def GetStringFiles(UniFilList, SourceFileList, IncludeList, IncludePathList, Ski
     Uni = SearchString(Uni, sorted (FileList), IsCompatibleMode)
 
     HFile = CreateHFile(BaseName, Uni, IsCompatibleMode, UniGenCFlag)
-    CFile = None
     if IsCompatibleMode or UniGenCFlag:
         CFile = CreateCFile(BaseName, Uni, IsCompatibleMode, FilterInfo)
+    else:
+        CFile = None
     if UniGenBinBuffer:
         CreateCFileContent(BaseName, Uni, IsCompatibleMode, UniGenBinBuffer, FilterInfo)
 
@@ -612,9 +638,7 @@ if __name__ == '__main__':
 
     SrcFileList = []
     for Root, Dirs, Files in os.walk('C:\\Edk'):
-        for File in Files:
-            SrcFileList.append(File)
-
+        SrcFileList.extend(iter(Files))
     IncludeList = [
                    r'C:\\Edk'
     ]

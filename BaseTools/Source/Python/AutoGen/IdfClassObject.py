@@ -67,9 +67,8 @@ class IdfFileClassObject(object):
                 EdkLogger.error("Image Definition File Parser", PARSER_ERROR, 'No Image definition file is given.')
 
             try:
-                IdfFile = open(LongFilePath(File.Path), mode='r')
-                FileIn = IdfFile.read()
-                IdfFile.close()
+                with open(LongFilePath(File.Path), mode='r') as IdfFile:
+                    FileIn = IdfFile.read()
             except:
                 EdkLogger.error("build", FILE_OPEN_FAILURE, ExtraData=File)
 
@@ -82,22 +81,42 @@ class IdfFileClassObject(object):
 
                 LineNo = GetLineNo(FileIn, Line, False)
                 if not Line.startswith('#image '):
-                    EdkLogger.error("Image Definition File Parser", PARSER_ERROR, 'The %s in Line %s of File %s is invalid.' % (Line, LineNo, File.Path))
+                    EdkLogger.error(
+                        "Image Definition File Parser",
+                        PARSER_ERROR,
+                        f'The {Line} in Line {LineNo} of File {File.Path} is invalid.',
+                    )
 
                 if Line.find('#image ') >= 0:
                     LineDetails = Line.split()
                     Len = len(LineDetails)
-                    if Len != 3 and Len != 4:
-                        EdkLogger.error("Image Definition File Parser", PARSER_ERROR, 'The format is not match #image IMAGE_ID [TRANSPARENT] ImageFileName in Line %s of File %s.' % (LineNo, File.Path))
+                    if Len not in [3, 4]:
+                        EdkLogger.error(
+                            "Image Definition File Parser",
+                            PARSER_ERROR,
+                            f'The format is not match #image IMAGE_ID [TRANSPARENT] ImageFileName in Line {LineNo} of File {File.Path}.',
+                        )
                     if Len == 4 and LineDetails[2] != 'TRANSPARENT':
-                        EdkLogger.error("Image Definition File Parser", PARSER_ERROR, 'Please use the keyword "TRANSPARENT" to describe the transparency setting in Line %s of File %s.' % (LineNo, File.Path))
+                        EdkLogger.error(
+                            "Image Definition File Parser",
+                            PARSER_ERROR,
+                            f'Please use the keyword "TRANSPARENT" to describe the transparency setting in Line {LineNo} of File {File.Path}.',
+                        )
                     MatchString = gIdentifierPattern.match(LineDetails[1])
                     if MatchString is None:
-                        EdkLogger.error('Image Definition  File Parser', FORMAT_INVALID, 'The Image token name %s defined in Idf file %s contains the invalid character.' % (LineDetails[1], File.Path))
+                        EdkLogger.error(
+                            'Image Definition  File Parser',
+                            FORMAT_INVALID,
+                            f'The Image token name {LineDetails[1]} defined in Idf file {File.Path} contains the invalid character.',
+                        )
                     if LineDetails[1] not in self.ImageIDList:
                         self.ImageIDList.append(LineDetails[1])
                     else:
-                        EdkLogger.error("Image Definition File Parser", PARSER_ERROR, 'The %s in Line %s of File %s is already defined.' % (LineDetails[1], LineNo, File.Path))
+                        EdkLogger.error(
+                            "Image Definition File Parser",
+                            PARSER_ERROR,
+                            f'The {LineDetails[1]} in Line {LineNo} of File {File.Path} is already defined.',
+                        )
                     if Len == 4:
                         ImageFile = ImageFileObject(LineDetails[Len-1], LineDetails[1], True)
                     else:
@@ -116,7 +135,7 @@ def SearchImageID(ImageFileObject, FileList):
             for Line in Lines:
                 ImageIdList = IMAGE_TOKEN.findall(Line)
                 for ID in ImageIdList:
-                    EdkLogger.debug(EdkLogger.DEBUG_5, "Found ImageID identifier: " + ID)
+                    EdkLogger.debug(EdkLogger.DEBUG_5, f"Found ImageID identifier: {ID}")
                     ImageFileObject.SetImageIDReferenced(ID)
 
 class ImageFileObject(object):

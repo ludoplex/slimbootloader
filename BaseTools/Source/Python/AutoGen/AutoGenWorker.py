@@ -87,12 +87,10 @@ class LogAgent(threading.Thread):
                 break
             if log_message.name == "tool_error":
                 self._ErrorLogger_agent.log(log_message.levelno,log_message.getMessage())
-            elif log_message.name == "tool_info":
+            elif log_message.name == "tool_info" or log_message.name != "tool_debug":
                 self._InfoLogger_agent.log(log_message.levelno,log_message.getMessage())
-            elif log_message.name == "tool_debug":
-                self._DebugLogger_agent.log(log_message.levelno,log_message.getMessage())
             else:
-                self._InfoLogger_agent.log(log_message.levelno,log_message.getMessage())
+                self._DebugLogger_agent.log(log_message.levelno,log_message.getMessage())
 
     def kill(self):
         self.log_q.put(None)
@@ -113,10 +111,10 @@ class AutoGenManager(threading.Thread):
                 if badnews == "Done":
                     fin_num += 1
                 elif badnews == "QueueEmpty":
-                    EdkLogger.debug(EdkLogger.DEBUG_9, "Worker %s: %s" % (os.getpid(), badnews))
+                    EdkLogger.debug(EdkLogger.DEBUG_9, f"Worker {os.getpid()}: {badnews}")
                     self.TerminateWorkers()
                 else:
-                    EdkLogger.debug(EdkLogger.DEBUG_9, "Worker %s: %s" % (os.getpid(), badnews))
+                    EdkLogger.debug(EdkLogger.DEBUG_9, f"Worker {os.getpid()}: {badnews}")
                     self.Status = False
                     self.TerminateWorkers()
                 if fin_num == len(self.autogen_workers):
@@ -178,7 +176,10 @@ class AutoGenWorkerInProcess(mp.Process):
                     self.data_pipe = MemoryDataPipe()
                     self.data_pipe.load(self.data_pipe_file_path)
                 except:
-                    self.feedback_q.put(taskname + ":" + "load data pipe %s failed." % self.data_pipe_file_path)
+                    self.feedback_q.put(
+                        f"{taskname}:"
+                        + f"load data pipe {self.data_pipe_file_path} failed."
+                    )
             EdkLogger.LogClientInitialize(self.log_q)
             loglevel = self.data_pipe.Get("LogLevel")
             if not loglevel:
@@ -240,11 +241,14 @@ class AutoGenWorkerInProcess(mp.Process):
                 try:
                     module_file,module_root,module_path,module_basename,module_originalpath,module_arch,IsLib = self.module_queue.get_nowait()
                 except Empty:
-                    EdkLogger.debug(EdkLogger.DEBUG_9, "Worker %s: %s" % (os.getpid(), "Fake Empty."))
+                    EdkLogger.debug(EdkLogger.DEBUG_9, f"Worker {os.getpid()}: Fake Empty.")
                     time.sleep(0.01)
                     continue
                 if module_file is None:
-                    EdkLogger.debug(EdkLogger.DEBUG_9, "Worker %s: %s" % (os.getpid(), "Worker get the last item in the queue."))
+                    EdkLogger.debug(
+                        EdkLogger.DEBUG_9,
+                        f"Worker {os.getpid()}: Worker get the last item in the queue.",
+                    )
                     self.feedback_q.put("QueueEmpty")
                     time.sleep(0.01)
                     continue
@@ -297,10 +301,10 @@ class AutoGenWorkerInProcess(mp.Process):
                         self.cache_q.put((Ma.MetaFile.Path, Ma.Arch, "MakeCache", False))
 
         except Exception as e:
-            EdkLogger.debug(EdkLogger.DEBUG_9, "Worker %s: %s" % (os.getpid(), str(e)))
+            EdkLogger.debug(EdkLogger.DEBUG_9, f"Worker {os.getpid()}: {str(e)}")
             self.feedback_q.put(taskname)
         finally:
-            EdkLogger.debug(EdkLogger.DEBUG_9, "Worker %s: %s" % (os.getpid(), "Done"))
+            EdkLogger.debug(EdkLogger.DEBUG_9, f"Worker {os.getpid()}: Done")
             self.feedback_q.put("Done")
             self.cache_q.put("CacheDone")
 

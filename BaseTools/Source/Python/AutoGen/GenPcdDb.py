@@ -293,16 +293,9 @@ class DbItemList:
         for Datas in self.RawDataList:
             if type(Datas) in (list, tuple):
                 for Data in Datas:
-                    if PackStr:
-                        Buffer += pack(PackStr, GetIntegerValue(Data))
-                    else:
-                        Buffer += PackGuid(Data)
+                    Buffer += pack(PackStr, GetIntegerValue(Data)) if PackStr else PackGuid(Data)
             else:
-                if PackStr:
-                    Buffer += pack(PackStr, GetIntegerValue(Datas))
-                else:
-                    Buffer += PackGuid(Datas)
-
+                Buffer += pack(PackStr, GetIntegerValue(Datas)) if PackStr else PackGuid(Datas)
         return Buffer
 
 ## DbExMapTblItemList
@@ -352,11 +345,10 @@ class DbComItemList (DbItemList):
             return self.ListSize
         if self.ItemSize == 0:
             assert(False)
+        elif len(self.RawDataList) == 0:
+            self.ListSize = 0
         else:
-            if len(self.RawDataList) == 0:
-                self.ListSize = 0
-            else:
-                self.ListSize = self.GetInterOffset(len(self.RawDataList) - 1) + len(self.RawDataList[len(self.RawDataList)-1]) * self.ItemSize
+            self.ListSize = self.GetInterOffset(len(self.RawDataList) - 1) + len(self.RawDataList[len(self.RawDataList)-1]) * self.ItemSize
 
         return self.ListSize
 
@@ -461,9 +453,7 @@ class DbSizeTableItemList (DbItemList):
         DbItemList.__init__(self, ItemSize, DataList, RawDataList)
 
     def GetListSize(self):
-        length = 0
-        for Data in self.RawDataList:
-            length += (1 + len(Data[1]))
+        length = sum((1 + len(Data[1])) for Data in self.RawDataList)
         return length * self.ItemSize
     def PackData(self):
         PackStr = "=H"
@@ -496,22 +486,14 @@ class DbStringItemList (DbComItemList):
             Len = LenList[Index]
             RawDatas = RawDataList[Index]
             assert(Len >= len(RawDatas))
-            ActualDatas = []
-            for i in range(len(RawDatas)):
-                ActualDatas.append(RawDatas[i])
-            for i in range(len(RawDatas), Len):
-                ActualDatas.append(0)
+            ActualDatas = [RawDatas[i] for i in range(len(RawDatas))]
+            ActualDatas.extend(0 for _ in range(len(RawDatas), Len))
             DataList.append(ActualDatas)
         self.LenList = LenList
         DbComItemList.__init__(self, ItemSize, DataList, RawDataList)
     def GetInterOffset(self, Index):
-        Offset = 0
-
         assert(Index < len(self.LenList))
-        for ItemIndex in range(Index):
-            Offset += self.LenList[ItemIndex]
-
-        return Offset
+        return sum(self.LenList[ItemIndex] for ItemIndex in range(Index))
 
     def GetListSize(self):
         if self.ListSize:
@@ -560,7 +542,7 @@ def GetMatchedIndex(Key1, List1, Key2, List2):
 #
 def StringArrayToList(StringArray):
     StringArray = StringArray[1:-1]
-    StringArray = '[' + StringArray + ']'
+    StringArray = f'[{StringArray}]'
     return eval(StringArray)
 
 

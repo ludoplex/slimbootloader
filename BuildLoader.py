@@ -46,17 +46,18 @@ def rebuild_basetools ():
         print ("Build BaseTools failed, please check required build environment and utilities !")
         sys.exit(1)
 
-def create_conf (workspace, sbl_source):
+def create_conf(workspace, sbl_source):
     # create conf and build folder if not exist
     workspace = os.environ['WORKSPACE']
     if not os.path.exists(os.path.join(workspace, 'Conf')):
         os.makedirs(os.path.join(workspace, 'Conf'))
     for name in ['target', 'tools_def', 'build_rule']:
-        txt_file = os.path.join(workspace, 'Conf/%s.txt' % name)
+        txt_file = os.path.join(workspace, f'Conf/{name}.txt')
         if not os.path.exists(txt_file):
-            shutil.copy (
-                os.path.join(sbl_source, 'BaseTools/Conf/%s.template' % name),
-                os.path.join(workspace, 'Conf/%s.txt' % name))
+            shutil.copy(
+                os.path.join(sbl_source, f'BaseTools/Conf/{name}.template'),
+                os.path.join(workspace, f'Conf/{name}.txt'),
+            )
 
 def prep_env ():
     sblsource = os.environ['SBL_SOURCE']
