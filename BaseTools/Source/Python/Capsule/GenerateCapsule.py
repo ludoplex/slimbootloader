@@ -42,7 +42,7 @@ __version__     = '0.10'
 __copyright__   = 'Copyright (c) 2022, Intel Corporation. All rights reserved.'
 __description__ = 'Generate a capsule.\n'
 
-def SignPayloadSignTool (Payload, ToolPath, PfxFile, SubjectName, Verbose = False):
+def SignPayloadSignTool(Payload, ToolPath, PfxFile, SubjectName, Verbose = False):
     #
     # Create a temporary directory
     #
@@ -68,15 +68,18 @@ def SignPayloadSignTool (Payload, ToolPath, PfxFile, SubjectName, Verbose = Fals
     #
     if ToolPath is None:
         ToolPath = ''
-    Command = ''
-    Command = Command + '"{Path}" '.format (Path = os.path.join (ToolPath, 'signtool.exe'))
-    Command = Command + 'sign /fd sha256 /p7ce DetachedSignedData /p7co 1.2.840.113549.1.7.2 '
-    Command = Command + '/p7 {TempDir} '.format (TempDir = TempDirectoryName)
+    Command = '' + '"{Path}" '.format(
+        Path=os.path.join(ToolPath, 'signtool.exe')
+    )
+    Command += (
+        'sign /fd sha256 /p7ce DetachedSignedData /p7co 1.2.840.113549.1.7.2 '
+    )
+    Command += '/p7 {TempDir} '.format (TempDir = TempDirectoryName)
     if PfxFile is not None:
-        Command = Command + '/f {PfxFile} '.format (PfxFile = PfxFile)
+        Command += '/f {PfxFile} '.format (PfxFile = PfxFile)
     if SubjectName is not None:
-        Command = Command + '/n {SubjectName} '.format (SubjectName = SubjectName)
-    Command = Command + TempFileName
+        Command += '/n {SubjectName} '.format (SubjectName = SubjectName)
+    Command += TempFileName
     if Verbose:
         print (Command)
 
@@ -99,7 +102,7 @@ def SignPayloadSignTool (Payload, ToolPath, PfxFile, SubjectName, Verbose = Fals
     # Read the signature from the generated output file
     #
     try:
-        with open (TempFileName + '.p7', 'rb') as File:
+        with open(f'{TempFileName}.p7', 'rb') as File:
             Signature = File.read ()
     except:
         shutil.rmtree (TempDirectoryName)
@@ -112,16 +115,17 @@ def VerifyPayloadSignTool (Payload, CertData, ToolPath, PfxFile, SubjectName, Ve
     print ('signtool verify is not supported.')
     raise ValueError ('GenerateCapsule: error: signtool verify is not supported.')
 
-def SignPayloadOpenSsl (Payload, ToolPath, SignerPrivateCertFile, OtherPublicCertFile, TrustedPublicCertFile, Verbose = False):
+def SignPayloadOpenSsl(Payload, ToolPath, SignerPrivateCertFile, OtherPublicCertFile, TrustedPublicCertFile, Verbose = False):
     #
     # Build openssl command
     #
     if ToolPath is None:
         ToolPath = ''
-    Command = ''
-    Command = Command + '"{Path}" '.format (Path = os.path.join (ToolPath, 'openssl'))
-    Command = Command + 'smime -sign -binary -outform DER -md sha256 '
-    Command = Command + '-signer "{Private}" -certfile "{Public}"'.format (Private = SignerPrivateCertFile, Public = OtherPublicCertFile)
+    Command = '' + '"{Path}" '.format (Path = os.path.join (ToolPath, 'openssl'))
+    Command += 'smime -sign -binary -outform DER -md sha256 '
+    Command += '-signer "{Private}" -certfile "{Public}"'.format(
+        Private=SignerPrivateCertFile, Public=OtherPublicCertFile
+    )
     if Verbose:
         print (Command)
 
@@ -141,7 +145,7 @@ def SignPayloadOpenSsl (Payload, ToolPath, SignerPrivateCertFile, OtherPublicCer
 
     return Signature
 
-def VerifyPayloadOpenSsl (Payload, CertData, ToolPath, SignerPrivateCertFile, OtherPublicCertFile, TrustedPublicCertFile, Verbose = False):
+def VerifyPayloadOpenSsl(Payload, CertData, ToolPath, SignerPrivateCertFile, OtherPublicCertFile, TrustedPublicCertFile, Verbose = False):
     #
     # Create a temporary directory
     #
@@ -167,10 +171,11 @@ def VerifyPayloadOpenSsl (Payload, CertData, ToolPath, SignerPrivateCertFile, Ot
     #
     if ToolPath is None:
         ToolPath = ''
-    Command = ''
-    Command = Command + '"{Path}" '.format (Path = os.path.join (ToolPath, 'openssl'))
-    Command = Command + 'smime -verify -inform DER '
-    Command = Command + '-content {Content} -CAfile "{Public}"'.format (Content = TempFileName, Public = TrustedPublicCertFile)
+    Command = '' + '"{Path}" '.format (Path = os.path.join (ToolPath, 'openssl'))
+    Command += 'smime -verify -inform DER '
+    Command += '-content {Content} -CAfile "{Public}"'.format(
+        Content=TempFileName, Public=TrustedPublicCertFile
+    )
     if Verbose:
         print (Command)
 
@@ -343,7 +348,7 @@ if __name__ == '__main__':
                                             DepexExp
                                             ))
 
-    def GenerateOutputJson (PayloadJsonDescriptorList):
+    def GenerateOutputJson(PayloadJsonDescriptorList):
         PayloadJson = {
                           "Payloads" : [
                               {
@@ -364,7 +369,7 @@ if __name__ == '__main__':
                               }for PayloadDescriptor in PayloadJsonDescriptorList
                           ]
                       }
-        OutputJsonFile = args.OutputFile.name + '.json'
+        OutputJsonFile = f'{args.OutputFile.name}.json'
         if 'Payloads' in PayloadJson:
             PayloadSection = PayloadJson ['Payloads']
         Index = 0

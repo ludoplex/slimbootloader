@@ -53,8 +53,7 @@ def UniToHexList(Uni):
     List = []
     for Item in Uni:
         Temp = '%04X' % ord(Item)
-        List.append('0x' + Temp[2:4])
-        List.append('0x' + Temp[0:2])
+        List.extend((f'0x{Temp[2:4]}', f'0x{Temp[:2]}'))
     return List
 
 LangConvTable = {'eng':'en', 'fra':'fr', \
@@ -105,13 +104,16 @@ def GetLanguageCode(LangName, IsCompatibleMode, File):
     if IsCompatibleMode:
         if length == 3 and LangName.isalpha():
             TempLangName = LangConvTable.get(LangName.lower())
-            if TempLangName is not None:
-                return TempLangName
-            return LangName
+            return TempLangName if TempLangName is not None else LangName
         else:
-            EdkLogger.error("Unicode File Parser", FORMAT_INVALID, "Invalid ISO 639-2 language code : %s" % LangName, File)
+            EdkLogger.error(
+                "Unicode File Parser",
+                FORMAT_INVALID,
+                f"Invalid ISO 639-2 language code : {LangName}",
+                File,
+            )
 
-    if (LangName[0] == 'X' or LangName[0] == 'x') and LangName[1] == '-':
+    if LangName[0] in ['X', 'x'] and LangName[1] == '-':
         return LangName
     if length == 2:
         if LangName.isalpha():
@@ -120,15 +122,24 @@ def GetLanguageCode(LangName, IsCompatibleMode, File):
         if LangName.isalpha() and LangConvTable.get(LangName.lower()) is None:
             return LangName
     elif length == 5:
-        if LangName[0:2].isalpha() and LangName[2] == '-':
+        if LangName[:2].isalpha() and LangName[2] == '-':
             return LangName
     elif length >= 6:
-        if LangName[0:2].isalpha() and LangName[2] == '-':
+        if LangName[:2].isalpha() and LangName[2] == '-':
             return LangName
-        if LangName[0:3].isalpha() and LangConvTable.get(LangName.lower()) is None and LangName[3] == '-':
+        if (
+            LangName[:3].isalpha()
+            and LangConvTable.get(LangName.lower()) is None
+            and LangName[3] == '-'
+        ):
             return LangName
 
-    EdkLogger.error("Unicode File Parser", FORMAT_INVALID, "Invalid RFC 4646 language code : %s" % LangName, File)
+    EdkLogger.error(
+        "Unicode File Parser",
+        FORMAT_INVALID,
+        f"Invalid RFC 4646 language code : {LangName}",
+        File,
+    )
 
 ## Ucs2Codec
 #
@@ -187,11 +198,7 @@ class StringDefClassObject(object):
             self.Token = Token
 
     def __str__(self):
-        return repr(self.StringName) + ' ' + \
-               repr(self.Token) + ' ' + \
-               repr(self.Referenced) + ' ' + \
-               repr(self.StringValue) + ' ' + \
-               repr(self.UseOtherLangDef)
+        return f'{repr(self.StringName)} {repr(self.Token)} {repr(self.Referenced)} {repr(self.StringValue)} {repr(self.UseOtherLangDef)}'
 
     def UpdateValue(self, Value = None):
         if Value is not None:
@@ -238,7 +245,12 @@ class UniFileClassObject(object):
             try:
                 FileIn = UniFileClassObject.OpenUniFile(LongFilePath(File.Path))
             except UnicodeError as X:
-                EdkLogger.error("build", FILE_READ_FAILURE, "File read failure: %s" % str(X), ExtraData=File);
+                EdkLogger.error(
+                    "build",
+                    FILE_READ_FAILURE,
+                    f"File read failure: {str(X)}",
+                    ExtraData=File,
+                );
             except:
                 EdkLogger.error("build", FILE_OPEN_FAILURE, ExtraData=File);
             LineNo = GetLineNo(FileIn, Line, False)
@@ -248,12 +260,7 @@ class UniFileClassObject(object):
             LangName = GetLanguageCode(Lang[1], self.IsCompatibleMode, self.File)
             LangPrintName = Lang[2]
 
-        IsLangInDef = False
-        for Item in self.LanguageDef:
-            if Item[0] == LangName:
-                IsLangInDef = True
-                break;
-
+        IsLangInDef = any(Item[0] == LangName for Item in self.LanguageDef)
         if not IsLangInDef:
             self.LanguageDef.append([LangName, LangPrintName])
 
@@ -286,9 +293,8 @@ class UniFileClassObject(object):
         # Read file
         #
         try:
-            UniFile = open(FileName, mode='rb')
-            FileIn = UniFile.read()
-            UniFile.close()
+            with open(FileName, mode='rb') as UniFile:
+                FileIn = UniFile.read()
         except:
             EdkLogger.Error("build", FILE_OPEN_FAILURE, ExtraData=File)
 
@@ -349,16 +355,19 @@ class UniFileClassObject(object):
         if Name != '':
             MatchString = gIdentifierPattern.match(Name)
             if MatchString is None:
-                EdkLogger.error('Unicode File Parser', FORMAT_INVALID, 'The string token name %s defined in UNI file %s contains the invalid character.' % (Name, self.File))
+                EdkLogger.error(
+                    'Unicode File Parser',
+                    FORMAT_INVALID,
+                    f'The string token name {Name} defined in UNI file {self.File} contains the invalid character.',
+                )
         LanguageList = Item.split(u'#language ')
         for IndexI in range(len(LanguageList)):
             if IndexI == 0:
                 continue
-            else:
-                Language = LanguageList[IndexI].split()[0]
-                Value = LanguageList[IndexI][LanguageList[IndexI].find(u'\"') + len(u'\"') : LanguageList[IndexI].rfind(u'\"')] #.replace(u'\r\n', u'')
-                Language = GetLanguageCode(Language, self.IsCompatibleMode, self.File)
-                self.AddStringToList(Name, Language, Value)
+            Language = LanguageList[IndexI].split()[0]
+            Value = LanguageList[IndexI][LanguageList[IndexI].find(u'\"') + len(u'\"') : LanguageList[IndexI].rfind(u'\"')] #.replace(u'\r\n', u'')
+            Language = GetLanguageCode(Language, self.IsCompatibleMode, self.File)
+            self.AddStringToList(Name, Language, Value)
 
     #
     # Get include file list and load them
@@ -374,7 +383,12 @@ class UniFileClassObject(object):
         try:
             FileIn = UniFileClassObject.OpenUniFile(LongFilePath(File.Path))
         except UnicodeError as X:
-            EdkLogger.error("build", FILE_READ_FAILURE, "File read failure: %s" % str(X), ExtraData=File.Path);
+            EdkLogger.error(
+                "build",
+                FILE_READ_FAILURE,
+                f"File read failure: {str(X)}",
+                ExtraData=File.Path,
+            );
         except OSError:
             EdkLogger.error("Unicode File Parser", FILE_NOT_FOUND, ExtraData=File.Path)
         except:
@@ -417,15 +431,15 @@ class UniFileClassObject(object):
             StartPos = Line.find(u'\\x')
             while (StartPos != -1):
                 EndPos = Line.find(u'\\', StartPos + 1, StartPos + 7)
-                if EndPos != -1 and EndPos - StartPos == 6 :
+                if EndPos != -1 and EndPos - StartPos == 6:
                     if g4HexChar.match(Line[StartPos + 2 : EndPos], re.UNICODE):
                         EndStr = Line[EndPos: ]
                         UniStr = Line[StartPos + 2: EndPos]
                         if EndStr.startswith(u'\\x') and len(EndStr) >= 7:
                             if EndStr[6] == u'\\' and g4HexChar.match(EndStr[2 : 6], re.UNICODE):
-                                Line = Line[0 : StartPos] + UniStr + EndStr
+                                Line = Line[:StartPos] + UniStr + EndStr
                         else:
-                            Line = Line[0 : StartPos] + UniStr + EndStr[1:]
+                            Line = Line[:StartPos] + UniStr + EndStr[1:]
                 StartPos = Line.find(u'\\x', StartPos + 1)
 
             IncList = gIncludePattern.findall(Line)
@@ -488,8 +502,8 @@ class UniFileClassObject(object):
             #     Mi segunda secuencia 2
             #
             if Line.find(u'#string ') >= 0 and Line.find(u'#language ') < 0 and \
-                SecondLine.find(u'#string ') < 0 and SecondLine.find(u'#language ') >= 0 and \
-                ThirdLine.find(u'#string ') < 0 and ThirdLine.find(u'#language ') < 0:
+                    SecondLine.find(u'#string ') < 0 and SecondLine.find(u'#language ') >= 0 and \
+                    ThirdLine.find(u'#string ') < 0 and ThirdLine.find(u'#language ') < 0:
                 Name = Line[Line.find(u'#string ') + len(u'#string ') : ].strip(' ')
                 Language = SecondLine[SecondLine.find(u'#language ') + len(u'#language ') : ].strip(' ')
                 for IndexJ in range(IndexI + 2, len(Lines)):
@@ -504,7 +518,11 @@ class UniFileClassObject(object):
                 if not self.IsCompatibleMode and Name != '':
                     MatchString = gIdentifierPattern.match(Name)
                     if MatchString is None:
-                        EdkLogger.error('Unicode File Parser', FORMAT_INVALID, 'The string token name %s defined in UNI file %s contains the invalid character.' % (Name, self.File))
+                        EdkLogger.error(
+                            'Unicode File Parser',
+                            FORMAT_INVALID,
+                            f'The string token name {Name} defined in UNI file {self.File} contains the invalid character.',
+                        )
                 self.AddStringToList(Name, Language, Value)
                 continue
 
@@ -549,8 +567,11 @@ class UniFileClassObject(object):
             if Language == LangNameItem[0]:
                 break
         else:
-            EdkLogger.error('Unicode File Parser', FORMAT_NOT_SUPPORTED, "The language '%s' for %s is not defined in Unicode file %s." \
-                            % (Language, Name, self.File))
+            EdkLogger.error(
+                'Unicode File Parser',
+                FORMAT_NOT_SUPPORTED,
+                f"The language '{Language}' for {Name} is not defined in Unicode file {self.File}.",
+            )
 
         if Language not in self.OrderedStringList:
             self.OrderedStringList[Language] = []
@@ -576,10 +597,7 @@ class UniFileClassObject(object):
                     # so that the unique STRING identifier is reserved for all languages in the package list.
                     #
                     if LangName[0] != Language:
-                        if UseOtherLangDef != '':
-                            OtherLangDef = UseOtherLangDef
-                        else:
-                            OtherLangDef = Language
+                        OtherLangDef = UseOtherLangDef if UseOtherLangDef != '' else Language
                         self.OrderedStringList[LangName[0]].append(StringDefClassObject(Name, '', Referenced, Token, OtherLangDef))
                         self.OrderedStringDict[LangName[0]][Name] = len(self.OrderedStringList[LangName[0]]) - 1
             else:
@@ -614,11 +632,10 @@ class UniFileClassObject(object):
     # Search the string in language definition by Token
     #
     def FindByToken(self, Token, Lang):
-        for Item in self.OrderedStringList[Lang]:
-            if Item.Token == Token:
-                return Item
-
-        return None
+        return next(
+            (Item for Item in self.OrderedStringList[Lang] if Item.Token == Token),
+            None,
+        )
 
     #
     # Re-order strings and re-generate tokens
@@ -671,7 +688,7 @@ class UniFileClassObject(object):
         for Item in self.OrderedStringList:
             print(Item)
             for Member in self.OrderedStringList[Item]:
-                print(str(Member))
+                print(Member)
 
 # This acts like the main() function for the script, unless it is 'import'ed into another
 # script.

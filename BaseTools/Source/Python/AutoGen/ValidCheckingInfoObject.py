@@ -36,38 +36,27 @@ class VAR_CHECK_PCD_VARIABLE_TAB_CONTAINER(object):
         BinFileName = "PcdVarCheck.bin"
         BinFilePath = os.path.join(dest, BinFileName)
         Buffer = bytearray()
-        index = 0
-        for var_check_tab in self.var_check_info:
-            index += 1
-            realLength = 0
-            realLength += 32
+        for index, var_check_tab in enumerate(self.var_check_info, start=1):
+            realLength = 0 + 32
             Name = var_check_tab.Name[1:-1]
             NameChars = Name.split(",")
             realLength += len(NameChars)
             if (index < len(self.var_check_info) and realLength % 4) or (index == len(self.var_check_info) and len(var_check_tab.validtab) > 0 and realLength % 4):
                 realLength += (4 - (realLength % 4))
-            itemIndex = 0
-            for item in var_check_tab.validtab:
-                itemIndex += 1
+            for itemIndex, item in enumerate(var_check_tab.validtab, start=1):
                 realLength += 5
                 for v_data in item.data:
-                    if isinstance(v_data, int):
+                    realLength += item.StorageWidth
+                    if not isinstance(v_data, int):
                         realLength += item.StorageWidth
-                    else:
-                        realLength += item.StorageWidth
-                        realLength += item.StorageWidth
-                if (index == len(self.var_check_info)) :
+                if (index == len(self.var_check_info)):
                     if (itemIndex < len(var_check_tab.validtab)) and realLength % 4:
                         realLength += (4 - (realLength % 4))
-                else:
-                    if realLength % 4:
-                        realLength += (4 - (realLength % 4))
+                elif realLength % 4:
+                    realLength += (4 - (realLength % 4))
             var_check_tab.Length = realLength
         realLength = 0
-        index = 0
-        for var_check_tab in self.var_check_info:
-            index += 1
-
+        for index, var_check_tab in enumerate(self.var_check_info, start=1):
             b = pack("=H", var_check_tab.Revision)
             Buffer += b
             realLength += 2
@@ -84,7 +73,7 @@ class VAR_CHECK_PCD_VARIABLE_TAB_CONTAINER(object):
             Buffer += b
             realLength += 1
 
-            for i in range(0, 3):
+            for _ in range(0, 3):
                 b = pack("=B", var_check_tab.Reserved)
                 Buffer += b
                 realLength += 1
@@ -107,14 +96,11 @@ class VAR_CHECK_PCD_VARIABLE_TAB_CONTAINER(object):
                 realLength += 1
 
             if (index < len(self.var_check_info) and realLength % 4) or (index == len(self.var_check_info) and len(var_check_tab.validtab) > 0 and realLength % 4):
-                for i in range(4 - (realLength % 4)):
+                for _ in range(4 - (realLength % 4)):
                     b = pack("=B", var_check_tab.pad)
                     Buffer += b
                     realLength += 1
-            itemIndex = 0
-            for item in var_check_tab.validtab:
-                itemIndex += 1
-
+            for itemIndex, item in enumerate(var_check_tab.validtab, start=1):
                 b = pack("=B", item.Type)
                 Buffer += b
                 realLength += 1
@@ -143,27 +129,25 @@ class VAR_CHECK_PCD_VARIABLE_TAB_CONTAINER(object):
                         Buffer += b
                         realLength += item.StorageWidth
 
-                if (index == len(self.var_check_info)) :
+                if (index == len(self.var_check_info)):
                     if (itemIndex < len(var_check_tab.validtab)) and realLength % 4:
-                        for i in range(4 - (realLength % 4)):
+                        for _ in range(4 - (realLength % 4)):
                             b = pack("=B", var_check_tab.pad)
                             Buffer += b
                             realLength += 1
-                else:
-                    if realLength % 4:
-                        for i in range(4 - (realLength % 4)):
-                            b = pack("=B", var_check_tab.pad)
-                            Buffer += b
-                            realLength += 1
+                elif realLength % 4:
+                    for _ in range(4 - (realLength % 4)):
+                        b = pack("=B", var_check_tab.pad)
+                        Buffer += b
+                        realLength += 1
 
         DbFile = BytesIO()
         if Phase == 'DXE' and os.path.exists(BinFilePath):
-            BinFile = open(BinFilePath, "rb")
-            BinBuffer = BinFile.read()
-            BinFile.close()
+            with open(BinFilePath, "rb") as BinFile:
+                BinBuffer = BinFile.read()
             BinBufferSize = len(BinBuffer)
             if (BinBufferSize % 4):
-                for i in range(4 - (BinBufferSize % 4)):
+                for _ in range(4 - (BinBufferSize % 4)):
                     b = pack("=B", VAR_CHECK_PCD_VARIABLE_TAB.pad)
                     BinBuffer += b
             Buffer = BinBuffer + Buffer
@@ -189,10 +173,7 @@ class VAR_CHECK_PCD_VARIABLE_TAB(object):
         self.Length = 32 + len(self.Name.split(",")) + self.GetValidTabLen()
 
     def GetValidTabLen(self):
-        validtablen = 0
-        for item in self.validtab:
-            validtablen += item.Length
-        return validtablen
+        return sum(item.Length for item in self.validtab)
 
     def SetAttributes(self, attributes):
         self.Attributes = attributes
@@ -202,10 +183,7 @@ class VAR_CHECK_PCD_VARIABLE_TAB(object):
             self.validtab.append(valid_obj)
 
     def equal(self, varchecktab):
-        if self.Guid == varchecktab.Guid and self.Name == varchecktab.Name:
-            return True
-        else:
-            return False
+        return self.Guid == varchecktab.Guid and self.Name == varchecktab.Name
 
     def merge(self, varchecktab):
         for validobj in varchecktab.validtab:
@@ -260,10 +238,7 @@ class VAR_CHECK_PCD_VALID_RANGE(VAR_CHECK_PCD_VALID_OBJ):
         RangeExpr = ""
         i = 0
         for item in self.rawdata:
-            if i == 0:
-                RangeExpr = "( " + item + " )"
-            else:
-                RangeExpr = RangeExpr + "OR ( " + item + " )"
+            RangeExpr = f"( {item} )" if i == 0 else f"{RangeExpr}OR ( {item} )"
         range_result = RangeExpression(RangeExpr, self.PcdDataType)(True)
         for rangelist in range_result:
             for obj in rangelist.pop():

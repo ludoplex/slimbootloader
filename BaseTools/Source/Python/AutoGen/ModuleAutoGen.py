@@ -217,8 +217,8 @@ class ModuleAutoGen(AutoGen):
     #   @param      PlatformFile        Platform meta-file
     #
     def _InitWorker(self, Workspace, ModuleFile, Target, Toolchain, Arch, PlatformFile,DataPipe):
-        EdkLogger.debug(EdkLogger.DEBUG_9, "AutoGen module [%s] [%s]" % (ModuleFile, Arch))
-        GlobalData.gProcessingFile = "%s [%s, %s, %s]" % (ModuleFile, Arch, Toolchain, Target)
+        EdkLogger.debug(EdkLogger.DEBUG_9, f"AutoGen module [{ModuleFile}] [{Arch}]")
+        GlobalData.gProcessingFile = f"{ModuleFile} [{Arch}, {Toolchain}, {Target}]"
 
         self.Workspace = Workspace
         self.WorkspaceDir = ""
@@ -271,7 +271,7 @@ class ModuleAutoGen(AutoGen):
     def __hash__(self):
         return hash((self.MetaFile, self.Arch, self.ToolChain,self.BuildTarget))
     def __repr__(self):
-        return "%s [%s]" % (self.MetaFile, self.Arch)
+        return f"{self.MetaFile} [{self.Arch}]"
 
     # Get FixedAtBuild Pcds of this Module
     @cached_property
@@ -295,10 +295,10 @@ class ModuleAutoGen(AutoGen):
 
     @property
     def UniqueBaseName(self):
-        ModuleNames = self.DataPipe.Get("M_Name")
-        if not ModuleNames:
+        if ModuleNames := self.DataPipe.Get("M_Name"):
+            return ModuleNames.get((self.Name,self.MetaFile),self.Name)
+        else:
             return self.Name
-        return ModuleNames.get((self.Name,self.MetaFile),self.Name)
 
     # Macros could be used in build_rule.txt (also Makefile)
     @cached_property
@@ -511,26 +511,28 @@ class ModuleAutoGen(AutoGen):
                     # the type of build module is USER_DEFINED.
                     # All different DEPEX section tags would be copied into the As Built INF file
                     # and there would be separate DEPEX section tags
-                    if self.ModuleType.upper() == SUP_MODULE_USER_DEFINED or self.ModuleType.upper() == SUP_MODULE_HOST_APPLICATION:
+                    if self.ModuleType.upper() in [
+                        SUP_MODULE_USER_DEFINED,
+                        SUP_MODULE_HOST_APPLICATION,
+                    ]:
                         if (Arch.upper() == self.Arch.upper()) and (ModuleType.upper() != TAB_ARCH_COMMON):
                             DepexList.append({(Arch, ModuleType): DepexExpr})
-                    else:
-                        if Arch.upper() == TAB_ARCH_COMMON or \
-                          (Arch.upper() == self.Arch.upper() and \
-                          ModuleType.upper() in [TAB_ARCH_COMMON, self.ModuleType.upper()]):
-                            DepexList.append({(Arch, ModuleType): DepexExpr})
+                    elif Arch.upper() == TAB_ARCH_COMMON or \
+                              (Arch.upper() == self.Arch.upper() and \
+                              ModuleType.upper() in [TAB_ARCH_COMMON, self.ModuleType.upper()]):
+                        DepexList.append({(Arch, ModuleType): DepexExpr})
 
         #the type of build module is USER_DEFINED.
-        if self.ModuleType.upper() == SUP_MODULE_USER_DEFINED or self.ModuleType.upper() == SUP_MODULE_HOST_APPLICATION:
+        if self.ModuleType.upper() in [
+            SUP_MODULE_USER_DEFINED,
+            SUP_MODULE_HOST_APPLICATION,
+        ]:
             for Depex in DepexList:
                 for key in Depex:
                     DepexStr += '[Depex.%s.%s]\n' % key
-                    DepexStr += '\n'.join('# '+ val for val in Depex[key])
+                    DepexStr += '\n'.join(f'# {val}' for val in Depex[key])
                     DepexStr += '\n\n'
-            if not DepexStr:
-                return '[Depex.%s]\n' % self.Arch
-            return DepexStr
-
+            return '[Depex.%s]\n' % self.Arch if not DepexStr else DepexStr
         #the type of build module not is USER_DEFINED.
         Count = 0
         for Depex in DepexList:
@@ -539,7 +541,7 @@ class ModuleAutoGen(AutoGen):
                 DepexStr += ' AND '
             DepexStr += '('
             for D in Depex.values():
-                DepexStr += ' '.join(val for val in D)
+                DepexStr += ' '.join(D)
             Index = DepexStr.find('END')
             if Index > -1 and Index == len(DepexStr) - 3:
                 DepexStr = DepexStr[:-3]
@@ -582,11 +584,18 @@ class ModuleAutoGen(AutoGen):
                         try:
                             Value = FixedVoidTypePcds[item]
                             if len(Value.split(',')) != 16:
-                                EdkLogger.error("build", FORMAT_INVALID,
-                                                "{} used in [Depex] section should be used as FixedAtBuild type and VOID* datum type and 16 bytes in the module.".format(item))
+                                EdkLogger.error(
+                                    "build",
+                                    FORMAT_INVALID,
+                                    f"{item} used in [Depex] section should be used as FixedAtBuild type and VOID* datum type and 16 bytes in the module.",
+                                )
                             NewList.append(Value)
                         except:
-                            EdkLogger.error("build", FORMAT_INVALID, "{} used in [Depex] section should be used as FixedAtBuild type and VOID* datum type in the module.".format(item))
+                            EdkLogger.error(
+                                "build",
+                                FORMAT_INVALID,
+                                f"{item} used in [Depex] section should be used as FixedAtBuild type and VOID* datum type in the module.",
+                            )
 
                 DepexList.extend(NewList)
                 if DepexList[-1] == 'END':  # no need of a END at this time
@@ -594,10 +603,10 @@ class ModuleAutoGen(AutoGen):
                 DepexList.append(')')
                 Inherited = True
             if Inherited:
-                EdkLogger.verbose("DEPEX[%s] (+%s) = %s" % (self.Name, M.Module.BaseName, DepexList))
+                EdkLogger.verbose(f"DEPEX[{self.Name}] (+{M.Module.BaseName}) = {DepexList}")
             if 'BEFORE' in DepexList or 'AFTER' in DepexList:
                 break
-            if len(DepexList) > 0:
+            if DepexList:
                 EdkLogger.verbose('')
         return {self.ModuleType:DepexList}
 
@@ -625,7 +634,9 @@ class ModuleAutoGen(AutoGen):
                 DepexExpressionString += ')'
                 Inherited = True
             if Inherited:
-                EdkLogger.verbose("DEPEX[%s] (+%s) = %s" % (self.Name, M.BaseName, DepexExpressionString))
+                EdkLogger.verbose(
+                    f"DEPEX[{self.Name}] (+{M.BaseName}) = {DepexExpressionString}"
+                )
             if 'BEFORE' in DepexExpressionString or 'AFTER' in DepexExpressionString:
                 break
         if len(DepexExpressionString) > 0:
@@ -648,9 +659,8 @@ class ModuleAutoGen(AutoGen):
                     Arch = self.Arch
                     if len(ItemList) == 4:
                         Arch = ItemList[3]
-                    if Arch.upper() == TAB_ARCH_COMMON or Arch.upper() == self.Arch.upper():
-                        TianoCoreList = []
-                        TianoCoreList.extend([TAB_SECTION_START + Section + TAB_SECTION_END])
+                    if Arch.upper() in [TAB_ARCH_COMMON, self.Arch.upper()]:
+                        TianoCoreList = [TAB_SECTION_START + Section + TAB_SECTION_END]
                         TianoCoreList.extend(TianoCoreUserExtent[Section][:])
                         TianoCoreList.append('\n')
                         TianoCoreUserExtentionList.append(TianoCoreList)
@@ -674,7 +684,7 @@ class ModuleAutoGen(AutoGen):
     def BuildOption(self):
         RetVal, self.BuildRuleOrder = self.PlatformInfo.ApplyBuildOption(self.Module)
         if self.BuildRuleOrder:
-            self.BuildRuleOrder = ['.%s' % Ext for Ext in self.BuildRuleOrder.split()]
+            self.BuildRuleOrder = [f'.{Ext}' for Ext in self.BuildRuleOrder.split()]
         return RetVal
 
     ## Get include path list from tool option for the module build
@@ -713,7 +723,7 @@ class ModuleAutoGen(AutoGen):
             if GlobalData.gDisableIncludePathCheck == False:
                 for Path in IncPathList:
                     if (Path not in self.IncludePathList) and (CommonPath([Path, self.MetaFile.Dir]) != self.MetaFile.Dir):
-                        ErrMsg = "The include directory for the EDK II module in this line is invalid %s specified in %s FLAGS '%s'" % (Path, Tool, FlagOption)
+                        ErrMsg = f"The include directory for the EDK II module in this line is invalid {Path} specified in {Tool} FLAGS '{FlagOption}'"
                         EdkLogger.error("build",
                                         PARAMETER_INVALID,
                                         ExtraData=ErrMsg,
@@ -728,22 +738,23 @@ class ModuleAutoGen(AutoGen):
     #
     @cached_property
     def SourceFileList(self):
-        RetVal = []
         ToolChainTagSet = {"", TAB_STAR, self.ToolChain}
         ToolChainFamilySet = {"", TAB_STAR, self.ToolChainFamily, self.BuildRuleFamily}
+        RetVal = []
         for F in self.Module.Sources:
             # match tool chain
             if F.TagName not in ToolChainTagSet:
-                EdkLogger.debug(EdkLogger.DEBUG_9, "The toolchain [%s] for processing file [%s] is found, "
-                                "but [%s] is currently used" % (F.TagName, str(F), self.ToolChain))
+                EdkLogger.debug(
+                    EdkLogger.DEBUG_9,
+                    f"The toolchain [{F.TagName}] for processing file [{str(F)}] is found, but [{self.ToolChain}] is currently used",
+                )
                 continue
             # match tool chain family or build rule family
             if F.ToolChainFamily not in ToolChainFamilySet:
                 EdkLogger.debug(
-                            EdkLogger.DEBUG_0,
-                            "The file [%s] must be built by tools of [%s], " \
-                            "but current toolchain family is [%s], buildrule family is [%s]" \
-                                % (str(F), F.ToolChainFamily, self.ToolChainFamily, self.BuildRuleFamily))
+                    EdkLogger.DEBUG_0,
+                    f"The file [{str(F)}] must be built by tools of [{F.ToolChainFamily}], but current toolchain family is [{self.ToolChainFamily}], buildrule family is [{self.BuildRuleFamily}]",
+                )
                 continue
 
             # add the file path into search path list for file including
@@ -769,12 +780,10 @@ class ModuleAutoGen(AutoGen):
                     Order_Dict[key] = [SingleFile.Ext]
 
         RemoveList = []
-        for F in Order_Dict:
-            if len(Order_Dict[F]) > 1:
+        for F, value in Order_Dict.items():
+            if len(value) > 1:
                 Order_Dict[F].sort(key=lambda i: self.BuildRuleOrder.index(i))
-                for Ext in Order_Dict[F][1:]:
-                    RemoveList.append(F + Ext)
-
+                RemoveList.extend(F + Ext for Ext in Order_Dict[F][1:])
         for item in RemoveList:
             FileList.remove(item)
 
@@ -805,7 +814,7 @@ class ModuleAutoGen(AutoGen):
     def BinaryFileList(self):
         RetVal = []
         for F in self.Module.Binaries:
-            if F.Target not in [TAB_ARCH_COMMON, TAB_STAR] and F.Target != self.BuildTarget:
+            if F.Target not in [TAB_ARCH_COMMON, TAB_STAR, self.BuildTarget]:
                 continue
             RetVal.append(F)
             self._ApplyBuildRule(F, F.Type, BinaryFileList=RetVal)
@@ -825,10 +834,10 @@ class ModuleAutoGen(AutoGen):
             #second try getting build rule by ToolChainFamily
             if not RuleObject:
                 RuleObject = BuildRuleDatabase[Type, self.BuildType, self.Arch, self.ToolChainFamily]
-                if not RuleObject:
-                    # build type is always module type, but ...
-                    if self.ModuleType != self.BuildType:
-                        RuleObject = BuildRuleDatabase[Type, self.ModuleType, self.Arch, self.ToolChainFamily]
+            if not RuleObject:
+                # build type is always module type, but ...
+                if self.ModuleType != self.BuildType:
+                    RuleObject = BuildRuleDatabase[Type, self.ModuleType, self.Arch, self.ToolChainFamily]
             if not RuleObject:
                 continue
             RuleObject = RuleObject.Instantiate(self.Macros)
@@ -865,7 +874,7 @@ class ModuleAutoGen(AutoGen):
             if Index > 0:
                 FileType = TAB_UNKNOWN_FILE
             Source = SourceList[Index]
-            Index = Index + 1
+            Index += 1
 
             if Source != File:
                 CreateDirectory(Source.Dir)
@@ -906,7 +915,11 @@ class ModuleAutoGen(AutoGen):
 
             # to avoid cyclic rule
             if FileType in RuleChain:
-                EdkLogger.error("build", ERROR_STATEMENT, "Cyclic dependency detected while generating rule for %s" % str(Source))
+                EdkLogger.error(
+                    "build",
+                    ERROR_STATEMENT,
+                    f"Cyclic dependency detected while generating rule for {str(Source)}",
+                )
 
             RuleChain.add(FileType)
             SourceList.extend(Target.Outputs)
@@ -1021,10 +1034,7 @@ class ModuleAutoGen(AutoGen):
     #
     @cached_property
     def ModulePcdList(self):
-        # apply PCD settings from platform
-        RetVal = self.PlatformInfo.ApplyPcdSetting(self, self.Module.Pcds)
-
-        return RetVal
+        return self.PlatformInfo.ApplyPcdSetting(self, self.Module.Pcds)
     @cached_property
     def _PcdComments(self):
         ReVal = OrderedListDict()
@@ -1107,17 +1117,14 @@ class ModuleAutoGen(AutoGen):
     #
     @cached_property
     def IncludePathList(self):
-        RetVal = []
-        RetVal.append(self.MetaFile.Dir)
-        RetVal.append(self.DebugDir)
-
+        RetVal = [self.MetaFile.Dir, self.DebugDir]
         for Package in self.PackageList:
             PackageDir = mws.join(self.WorkspaceDir, Package.MetaFile.Dir)
             if PackageDir not in RetVal:
                 RetVal.append(PackageDir)
             IncludesList = Package.Includes
-            if Package._PrivateIncludes:
-                if not self.MetaFile.OriginalPath.Path.startswith(PackageDir):
+            if not self.MetaFile.OriginalPath.Path.startswith(PackageDir):
+                if Package._PrivateIncludes:
                     IncludesList = list(set(Package.Includes).difference(set(Package._PrivateIncludes)))
             for Inc in IncludesList:
                 if Inc not in RetVal:
@@ -1161,8 +1168,8 @@ class ModuleAutoGen(AutoGen):
         for Package in self.PackageList:
             PackageDir = mws.join(self.WorkspaceDir, Package.MetaFile.Dir)
             IncludesList = Package.Includes
-            if Package._PrivateIncludes:
-                if not self.MetaFile.Path.startswith(PackageDir):
+            if not self.MetaFile.Path.startswith(PackageDir):
+                if Package._PrivateIncludes:
                     IncludesList = list(set(Package.Includes).difference(set(Package._PrivateIncludes)))
         return IncludesList
 
@@ -1182,12 +1189,11 @@ class ModuleAutoGen(AutoGen):
         for SrcFile in self.SourceFileList:
             if SrcFile.Ext.lower() != '.vfr':
                 continue
-            Vfri = os.path.join(self.OutputDir, SrcFile.BaseName + '.i')
+            Vfri = os.path.join(self.OutputDir, f'{SrcFile.BaseName}.i')
             if not os.path.exists(Vfri):
                 continue
-            VfriFile = open(Vfri, 'r')
-            Content = VfriFile.read()
-            VfriFile.close()
+            with open(Vfri, 'r') as VfriFile:
+                Content = VfriFile.read()
             Pos = Content.find('efivarstore')
             while Pos != -1:
                 #
@@ -1209,7 +1215,7 @@ class ModuleAutoGen(AutoGen):
                 Guid = gEfiVarStoreGuidPattern.search(Content, Pos)
                 if not Guid:
                     break
-                NameArray = _ConvertStringToByteArray('L"' + Name.group(1) + '"')
+                NameArray = _ConvertStringToByteArray(f'L"{Name.group(1)}"')
                 NameGuids.add((NameArray, GuidStructureStringToGuidString(Guid.group(1))))
                 Pos = Content.find('efivarstore', Name.end())
         if not NameGuids:
@@ -1233,32 +1239,37 @@ class ModuleAutoGen(AutoGen):
     def _GenOffsetBin(self):
         VfrUniBaseName = {}
         for SourceFile in self.Module.Sources:
-            if SourceFile.Type.upper() == ".VFR" :
+            if SourceFile.Type.upper() == ".VFR":
                 #
                 # search the .map file to find the offset of vfr binary in the PE32+/TE file.
                 #
-                VfrUniBaseName[SourceFile.BaseName] = (SourceFile.BaseName + "Bin")
-            elif SourceFile.Type.upper() == ".UNI" :
+                VfrUniBaseName[SourceFile.BaseName] = f"{SourceFile.BaseName}Bin"
+            elif SourceFile.Type.upper() == ".UNI":
                 #
                 # search the .map file to find the offset of Uni strings binary in the PE32+/TE file.
                 #
-                VfrUniBaseName["UniOffsetName"] = (self.Name + "Strings")
+                VfrUniBaseName["UniOffsetName"] = f"{self.Name}Strings"
 
         if not VfrUniBaseName:
             return None
-        MapFileName = os.path.join(self.OutputDir, self.Name + ".map")
-        EfiFileName = os.path.join(self.OutputDir, self.Name + ".efi")
+        MapFileName = os.path.join(self.OutputDir, f"{self.Name}.map")
+        EfiFileName = os.path.join(self.OutputDir, f"{self.Name}.efi")
         VfrUniOffsetList = GetVariableOffset(MapFileName, EfiFileName, list(VfrUniBaseName.values()))
         if not VfrUniOffsetList:
             return None
 
-        OutputName = '%sOffset.bin' % self.Name
+        OutputName = f'{self.Name}Offset.bin'
         UniVfrOffsetFileName    =  os.path.join( self.OutputDir, OutputName)
 
         try:
             fInputfile = open(UniVfrOffsetFileName, "wb+", 0)
         except:
-            EdkLogger.error("build", FILE_OPEN_FAILURE, "File open failed for %s" % UniVfrOffsetFileName, None)
+            EdkLogger.error(
+                "build",
+                FILE_OPEN_FAILURE,
+                f"File open failed for {UniVfrOffsetFileName}",
+                None,
+            )
 
         # Use a instance of BytesIO to cache data
         fStringIO = BytesIO()

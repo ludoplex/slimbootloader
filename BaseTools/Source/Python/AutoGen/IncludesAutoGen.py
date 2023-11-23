@@ -72,7 +72,11 @@ ${END}
         SaveFileOnChange(os.path.join(self.makefile_folder,"dependency"),deps_include_str,False)
 
     def CreateDepsTarget(self):
-        SaveFileOnChange(os.path.join(self.makefile_folder,"deps_target"),"\n".join([item +":" for item in self.DepsCollection]),False)
+        SaveFileOnChange(
+            os.path.join(self.makefile_folder, "deps_target"),
+            "\n".join([f"{item}:" for item in self.DepsCollection]),
+            False,
+        )
 
     @cached_property
     def deps_files(self):
@@ -98,9 +102,8 @@ ${END}
 
                 firstlineitems = lines[0].split(": ")
                 dependency_file = firstlineitems[1].strip(" \\\n")
-                dependency_file = dependency_file.strip('''"''')
-                if dependency_file:
-                    if os.path.normpath(dependency_file +".deps") == abspath:
+                if dependency_file := dependency_file.strip('''"'''):
+                    if os.path.normpath(f"{dependency_file}.deps") == abspath:
                         continue
                     filename = os.path.basename(dependency_file).strip()
                     if filename not in targetname:
@@ -113,17 +116,22 @@ ${END}
                     dependency_file = dependency_file.strip('''"''')
                     if dependency_file == '':
                         continue
-                    if os.path.normpath(dependency_file +".deps") == abspath:
+                    if os.path.normpath(f"{dependency_file}.deps") == abspath:
                         continue
                     filename = os.path.basename(dependency_file).strip()
                     if filename in targetname:
                         continue
                     includes.add(dependency_file.strip())
             except Exception as e:
-                EdkLogger.error("build",FILE_NOT_FOUND, "%s doesn't exist" % abspath, ExtraData=str(e), RaiseError=False)
+                EdkLogger.error(
+                    "build",
+                    FILE_NOT_FOUND,
+                    f"{abspath} doesn't exist",
+                    ExtraData=str(e),
+                    RaiseError=False,
+                )
                 continue
-        rt = sorted(list(set([item.strip(' " \\\n') for item in includes])))
-        return rt
+        return sorted(list({item.strip(' " \\\n') for item in includes}))
 
     @cached_property
     def SourceFileList(self):
@@ -132,24 +140,31 @@ ${END}
         middle_file = {}
         for afile in source:
             if afile.upper().endswith(".VFR"):
-                middle_file.update({afile.split(".")[0]+".c":os.path.join(self.module_autogen.DebugDir,afile.split(".")[0]+".c")})
+                middle_file[afile.split(".")[0] + ".c"] = os.path.join(
+                    self.module_autogen.DebugDir, afile.split(".")[0] + ".c"
+                )
             if afile.upper().endswith((".S","ASM")):
-                middle_file.update({afile.split(".")[0]+".i":os.path.join(self.module_autogen.OutputDir,afile.split(".")[0]+".i")})
+                middle_file[afile.split(".")[0] + ".i"] = os.path.join(
+                    self.module_autogen.OutputDir, afile.split(".")[0] + ".i"
+                )
             if afile.upper().endswith(".ASL"):
-                middle_file.update({afile.split(".")[0]+".i":os.path.join(self.module_autogen.OutputDir,afile.split(".")[0]+".i")})
-        source.update({"AutoGen.c":os.path.join(self.module_autogen.OutputDir,"AutoGen.c")})
+                middle_file[afile.split(".")[0] + ".i"] = os.path.join(
+                    self.module_autogen.OutputDir, afile.split(".")[0] + ".i"
+                )
+        source["AutoGen.c"] = os.path.join(self.module_autogen.OutputDir,"AutoGen.c")
         source.update(middle_file)
         return source
 
     @cached_property
     def HasNamesakeSourceFile(self):
-        source_base_name = set([os.path.basename(item.File) for item in self.module_autogen.SourceFileList])
-        rt = len(source_base_name) != len(self.module_autogen.SourceFileList)
-        return rt
+        source_base_name = {
+            os.path.basename(item.File)
+            for item in self.module_autogen.SourceFileList
+        }
+        return len(source_base_name) != len(self.module_autogen.SourceFileList)
     @cached_property
     def CcPPCommandPathSet(self):
-        rt = set()
-        rt.add(self.module_autogen.BuildOption.get('CC',{}).get('PATH'))
+        rt = {self.module_autogen.BuildOption.get('CC',{}).get('PATH')}
         rt.add(self.module_autogen.BuildOption.get('ASLCC',{}).get('PATH'))
         rt.add(self.module_autogen.BuildOption.get('ASLPP',{}).get('PATH'))
         rt.add(self.module_autogen.BuildOption.get('VFRPP',{}).get('PATH'))
@@ -160,8 +175,14 @@ ${END}
     @cached_property
     def TargetFileList(self):
         """ Get a map of module's target name to a tuple of module's targets path and whose input file path """
-        targets = {}
-        targets["AutoGen.obj"] = (PathClass(os.path.join(self.module_autogen.OutputDir,"AutoGen.obj")),PathClass(os.path.join(self.module_autogen.DebugDir,"AutoGen.c")))
+        targets = {
+            "AutoGen.obj": (
+                PathClass(
+                    os.path.join(self.module_autogen.OutputDir, "AutoGen.obj")
+                ),
+                PathClass(os.path.join(self.module_autogen.DebugDir, "AutoGen.c")),
+            )
+        }
         for item in self.module_autogen.Targets.values():
             for block in item:
                 targets[block.Target.Path] = (block.Target,block.Inputs[0])
@@ -197,7 +218,7 @@ ${END}
             if self.HasNamesakeSourceFile:
                 for cc_cmd in self.CcPPCommandPathSet:
                     if cc_cmd in line:
-                        if '''"'''+cc_cmd+'''"''' in line:
+                        if f'''"{cc_cmd}"''' in line:
                             cc_options = line[len(cc_cmd)+2:].split()
                         else:
                             cc_options = line[len(cc_cmd):].split()
@@ -208,25 +229,31 @@ ${END}
                                         source_files = file.readlines()[0].split()
                                         SourceFileAbsPathMap = {os.path.basename(file): file for file in source_files if
                                                                 os.path.exists(file)}
-                                else:
-                                    if os.path.exists(item):
-                                        SourceFileAbsPathMap.update({os.path.basename(item): item.strip()})
-                        # SourceFileAbsPathMap = {os.path.basename(item):item for item in cc_options if not item.startswith("/") and os.path.exists(item)}
+                                elif os.path.exists(item):
+                                    SourceFileAbsPathMap.update({os.path.basename(item): item.strip()})
+                                        # SourceFileAbsPathMap = {os.path.basename(item):item for item in cc_options if not item.startswith("/") and os.path.exists(item)}
             if line in SourceFileAbsPathMap:
                 current_source = line
                 if current_source not in ModuleDepDict:
                     ModuleDepDict[SourceFileAbsPathMap[current_source]] = []
-            elif "Note: including file:" ==  line.lstrip()[:21]:
+            elif line.lstrip()[:21] == "Note: including file:":
                 if not current_source:
                     EdkLogger.error("build",BUILD_ERROR, "Parse /showIncludes output failed. line: %s. \n" % line, RaiseError=False)
                 else:
                     ModuleDepDict[SourceFileAbsPathMap[current_source]].append(line.lstrip()[22:].strip())
 
-        for source_abs in ModuleDepDict:
-            if ModuleDepDict[source_abs]:
+        for source_abs, value in ModuleDepDict.items():
+            if value:
                 target_abs = self.GetRealTarget(source_abs)
-                dep_file_name = os.path.basename(source_abs) + ".deps"
-                SaveFileOnChange(os.path.join(os.path.dirname(target_abs),dep_file_name)," \\\n".join([target_abs+":"] + ['''"''' + item +'''"''' for item in ModuleDepDict[source_abs]]),False)
+                dep_file_name = f"{os.path.basename(source_abs)}.deps"
+                SaveFileOnChange(
+                    os.path.join(os.path.dirname(target_abs), dep_file_name),
+                    " \\\n".join(
+                        [f"{target_abs}:"]
+                        + [f'''"{item}"''' for item in ModuleDepDict[source_abs]]
+                    ),
+                    False,
+                )
 
     def UpdateDepsFileforNonMsvc(self):
         """ Update .deps files.
@@ -261,17 +288,21 @@ ${END}
                     newcontent.append(p_target[0])
                     newcontent.extend(lines[2:])
                 else:
-                    line1 = " ".join(p_target).strip()
-                    line1 += "\n"
+                    line1 = " ".join(p_target).strip() + "\n"
                     newcontent.append(line1)
                     newcontent.extend(lines[1:])
 
-                newcontent.append("\n")
-                newcontent.append(DEP_FILE_TAIL)
+                newcontent.extend(("\n", DEP_FILE_TAIL))
                 with open(abspath,"w") as fw:
                     fw.write("".join(newcontent))
             except Exception as e:
-                EdkLogger.error("build",FILE_NOT_FOUND, "%s doesn't exist" % abspath, ExtraData=str(e), RaiseError=False)
+                EdkLogger.error(
+                    "build",
+                    FILE_NOT_FOUND,
+                    f"{abspath} doesn't exist",
+                    ExtraData=str(e),
+                    RaiseError=False,
+                )
                 continue
 
     def UpdateDepsFileforTrim(self):
@@ -281,7 +312,6 @@ ${END}
             if not abspath.endswith(".trim.deps"):
                 continue
             try:
-                newcontent = []
                 with open(abspath,"r") as fd:
                     lines = fd.readlines()
                 if lines[-1] == DEP_FILE_TAIL:
@@ -293,12 +323,17 @@ ${END}
                 targetitem += ": "
                 if len(lines)>=2:
                     targetitem += lines[1]
-                newcontent.append(targetitem)
+                newcontent = [targetitem]
                 newcontent.extend(lines[2:])
-                newcontent.append("\n")
-                newcontent.append(DEP_FILE_TAIL)
+                newcontent.extend(("\n", DEP_FILE_TAIL))
                 with open(abspath,"w") as fw:
                     fw.write("".join(newcontent))
             except Exception as e:
-                EdkLogger.error("build",FILE_NOT_FOUND, "%s doesn't exist" % abspath, ExtraData=str(e), RaiseError=False)
+                EdkLogger.error(
+                    "build",
+                    FILE_NOT_FOUND,
+                    f"{abspath} doesn't exist",
+                    ExtraData=str(e),
+                    RaiseError=False,
+                )
                 continue

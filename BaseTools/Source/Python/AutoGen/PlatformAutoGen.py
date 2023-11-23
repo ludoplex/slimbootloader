@@ -91,8 +91,10 @@ class PlatformAutoGen(AutoGen):
     #   @param      Arch            arch of the platform supports
     #
     def _InitWorker(self, Workspace, PlatformFile, Target, Toolchain, Arch):
-        EdkLogger.debug(EdkLogger.DEBUG_9, "AutoGen platform [%s] [%s]" % (PlatformFile, Arch))
-        GlobalData.gProcessingFile = "%s [%s, %s, %s]" % (PlatformFile, Arch, Toolchain, Target)
+        EdkLogger.debug(
+            EdkLogger.DEBUG_9, f"AutoGen platform [{PlatformFile}] [{Arch}]"
+        )
+        GlobalData.gProcessingFile = f"{PlatformFile} [{Arch}, {Toolchain}, {Target}]"
 
         self.MetaFile = PlatformFile
         self.Workspace = Workspace
@@ -136,10 +138,16 @@ class PlatformAutoGen(AutoGen):
 
         return True
     def FillData_LibConstPcd(self):
-        libConstPcd = {}
-        for LibAuto in self.LibraryAutoGenList:
-            if LibAuto.ConstPcd:
-                libConstPcd[(LibAuto.MetaFile.File,LibAuto.MetaFile.Root,LibAuto.Arch,LibAuto.MetaFile.Path)] = LibAuto.ConstPcd
+        libConstPcd = {
+            (
+                LibAuto.MetaFile.File,
+                LibAuto.MetaFile.Root,
+                LibAuto.Arch,
+                LibAuto.MetaFile.Path,
+            ): LibAuto.ConstPcd
+            for LibAuto in self.LibraryAutoGenList
+            if LibAuto.ConstPcd
+        }
         self.DataPipe.DataContainer = {"LibConstPcd":libConstPcd}
     ## hash() operator of PlatformAutoGen
     #
@@ -153,7 +161,7 @@ class PlatformAutoGen(AutoGen):
         return hash((self.MetaFile, self.Arch,self.ToolChain,self.BuildTarget))
     @cached_class_function
     def __repr__(self):
-        return "%s [%s]" % (self.MetaFile, self.Arch)
+        return f"{self.MetaFile} [{self.Arch}]"
 
     ## Create autogen code for platform and modules
     #
@@ -223,17 +231,18 @@ class PlatformAutoGen(AutoGen):
                     if key not in FixedAtBuildPcds:
                         ShareFixedAtBuildPcdsSameValue[key] = True
                         FixedAtBuildPcds[key] = DefaultValue
-                    else:
-                        if FixedAtBuildPcds[key] != DefaultValue:
-                            ShareFixedAtBuildPcdsSameValue[key] = False
+                    elif FixedAtBuildPcds[key] != DefaultValue:
+                        ShareFixedAtBuildPcdsSameValue[key] = False
             for Pcd in LibAuto.FixedAtBuildPcds:
                 key = ".".join((Pcd.TokenSpaceGuidCName, Pcd.TokenCName))
-                if (Pcd.TokenCName, Pcd.TokenSpaceGuidCName) not in self.NonDynamicPcdDict:
+                if (
+                    Pcd.TokenCName,
+                    Pcd.TokenSpaceGuidCName,
+                ) not in self.NonDynamicPcdDict:
                     continue
-                else:
-                    DscPcd = self.NonDynamicPcdDict[(Pcd.TokenCName, Pcd.TokenSpaceGuidCName)]
-                    if DscPcd.Type != TAB_PCDS_FIXED_AT_BUILD:
-                        continue
+                DscPcd = self.NonDynamicPcdDict[(Pcd.TokenCName, Pcd.TokenSpaceGuidCName)]
+                if DscPcd.Type != TAB_PCDS_FIXED_AT_BUILD:
+                    continue
                 if key in ShareFixedAtBuildPcdsSameValue and ShareFixedAtBuildPcdsSameValue[key]:
                     LibAuto.ConstPcd[key] = FixedAtBuildPcds[key]
 
@@ -252,8 +261,7 @@ class PlatformAutoGen(AutoGen):
         VariableInfo = VariableMgr(self.DscBuildDataObj._GetDefaultStores(), self.DscBuildDataObj.SkuIds)
         VariableInfo.SetVpdRegionMaxSize(VpdRegionSize)
         VariableInfo.SetVpdRegionOffset(VpdRegionBase)
-        Index = 0
-        for Pcd in sorted(DynamicPcdSet):
+        for Index, Pcd in enumerate(sorted(DynamicPcdSet)):
             pcdname = ".".join((Pcd.TokenSpaceGuidCName, Pcd.TokenCName))
             for SkuName in Pcd.SkuInfoList:
                 Sku = Pcd.SkuInfoList[SkuName]
@@ -267,21 +275,29 @@ class PlatformAutoGen(AutoGen):
                     VariableGuid = GuidStructureStringToGuidString(VariableGuidStructure)
                     for StorageName in Sku.DefaultStoreDict:
                         VariableInfo.append_variable(var_info(Index, pcdname, StorageName, SkuName, StringToArray(Sku.VariableName), VariableGuid, Sku.VariableOffset, Sku.VariableAttribute, Sku.HiiDefaultValue, Sku.DefaultStoreDict[StorageName] if Pcd.DatumType in TAB_PCD_NUMERIC_TYPES else StringToArray(Sku.DefaultStoreDict[StorageName]), Pcd.DatumType, Pcd.CustomAttribute['DscPosition'], Pcd.CustomAttribute.get('IsStru',False)))
-            Index += 1
         return VariableInfo
 
     def UpdateNVStoreMaxSize(self, OrgVpdFile):
         if self.VariableInfo:
-            VpdMapFilePath = os.path.join(self.BuildDir, TAB_FV_DIRECTORY, "%s.map" % self.Platform.VpdToolGuid)
-            PcdNvStoreDfBuffer = [item for item in self._DynamicPcdList if item.TokenCName == "PcdNvStoreDefaultValueBuffer" and item.TokenSpaceGuidCName == "gEfiMdeModulePkgTokenSpaceGuid"]
-
-            if PcdNvStoreDfBuffer:
+            VpdMapFilePath = os.path.join(
+                self.BuildDir, TAB_FV_DIRECTORY, f"{self.Platform.VpdToolGuid}.map"
+            )
+            if PcdNvStoreDfBuffer := [
+                item
+                for item in self._DynamicPcdList
+                if item.TokenCName == "PcdNvStoreDefaultValueBuffer"
+                and item.TokenSpaceGuidCName == "gEfiMdeModulePkgTokenSpaceGuid"
+            ]:
                 try:
                     OrgVpdFile.Read(VpdMapFilePath)
                     PcdItems = OrgVpdFile.GetOffset(PcdNvStoreDfBuffer[0])
                     NvStoreOffset = list(PcdItems.values())[0].strip() if PcdItems else '0'
                 except:
-                    EdkLogger.error("build", FILE_READ_FAILURE, "Can not find VPD map file %s to fix up VPD offset." % VpdMapFilePath)
+                    EdkLogger.error(
+                        "build",
+                        FILE_READ_FAILURE,
+                        f"Can not find VPD map file {VpdMapFilePath} to fix up VPD offset.",
+                    )
 
                 NvStoreOffset = int(NvStoreOffset, 16) if NvStoreOffset.upper().startswith("0X") else int(NvStoreOffset)
                 default_skuobj = PcdNvStoreDfBuffer[0].SkuInfoList.get(TAB_DEFAULT)
@@ -324,7 +340,9 @@ class PlatformAutoGen(AutoGen):
 
                 # make sure that the "VOID*" kind of datum has MaxDatumSize set
                 if PcdFromModule.DatumType == TAB_VOID and not PcdFromModule.MaxDatumSize:
-                    NoDatumTypePcdList.add("%s.%s [%s]" % (PcdFromModule.TokenSpaceGuidCName, PcdFromModule.TokenCName, M.MetaFile))
+                    NoDatumTypePcdList.add(
+                        f"{PcdFromModule.TokenSpaceGuidCName}.{PcdFromModule.TokenCName} [{M.MetaFile}]"
+                    )
 
                 # Check the PCD from Binary INF or Source INF
                 if M.IsBinaryModule == True:
@@ -344,7 +362,7 @@ class PlatformAutoGen(AutoGen):
                         # PCD will not be added into the Database unless it is used by other
                         # modules that are included in the FDF file.
                         if PcdFromModule.Type in PCD_DYNAMIC_TYPE_SET and \
-                            PcdFromModule.IsFromBinaryInf == False:
+                                PcdFromModule.IsFromBinaryInf == False:
                             # Print warning message to let the developer make a determine.
                             continue
                         # If one of the Source built modules listed in the DSC is not listed in
@@ -370,7 +388,7 @@ class PlatformAutoGen(AutoGen):
                         self._DynaPcdList_[Index] = PcdFromModule
                 elif PcdFromModule not in self._NonDynaPcdList_:
                     self._NonDynaPcdList_.append(PcdFromModule)
-                elif PcdFromModule in self._NonDynaPcdList_ and PcdFromModule.IsFromBinaryInf == True:
+                elif PcdFromModule.IsFromBinaryInf == True:
                     Index = self._NonDynaPcdList_.index(PcdFromModule)
                     if self._NonDynaPcdList_[Index].IsFromBinaryInf == False:
                         #The PCD from Binary INF will override the same one from source INF
@@ -401,7 +419,9 @@ class PlatformAutoGen(AutoGen):
                                         % (PcdFromModule.Type, PcdFromModule.TokenCName, InfName))
                     # make sure that the "VOID*" kind of datum has MaxDatumSize set
                     if PcdFromModule.DatumType == TAB_VOID and not PcdFromModule.MaxDatumSize:
-                        NoDatumTypePcdList.add("%s.%s [%s]" % (PcdFromModule.TokenSpaceGuidCName, PcdFromModule.TokenCName, InfName))
+                        NoDatumTypePcdList.add(
+                            f"{PcdFromModule.TokenSpaceGuidCName}.{PcdFromModule.TokenCName} [{InfName}]"
+                        )
                     if M.ModuleType in SUP_MODULE_SET_PEI:
                         PcdFromModule.Phase = "PEI"
                     if PcdFromModule not in self._DynaPcdList_ and PcdFromModule.Type in PCD_DYNAMIC_EX_TYPE_SET:
@@ -429,14 +449,14 @@ class PlatformAutoGen(AutoGen):
                 continue
             Index = self._DynaPcdList_.index(PcdFromModule)
             if PcdFromModule.IsFromDsc == False and \
-                PcdFromModule.Type in TAB_PCDS_PATCHABLE_IN_MODULE and \
-                PcdFromModule.IsFromBinaryInf == True and \
-                self._DynaPcdList_[Index].IsFromBinaryInf == False:
+                    PcdFromModule.Type in TAB_PCDS_PATCHABLE_IN_MODULE and \
+                    PcdFromModule.IsFromBinaryInf == True and \
+                    self._DynaPcdList_[Index].IsFromBinaryInf == False:
                 Index = self._DynaPcdList_.index(PcdFromModule)
                 self._DynaPcdList_.remove (self._DynaPcdList_[Index])
 
         # print out error information and break the build, if error found
-        if len(NoDatumTypePcdList) > 0:
+        if NoDatumTypePcdList:
             NoDatumTypePcdListString = "\n\t\t".join(NoDatumTypePcdList)
             EdkLogger.error("build", AUTOGEN_ERROR, "PCD setting error",
                             File=self.MetaFile,
